@@ -30,6 +30,7 @@ def detect_outliers(df: pd.DataFrame, z_threshold: float = 2.5) -> list[dict]:
     return [
         {
             "type": "outlier",
+            "id": int(row["id"]),
             "description": row["description"],
             "amount": row["amount"],
             "date": row["date"].strftime("%Y-%m-%d"),
@@ -59,6 +60,7 @@ def detect_duplicates(df: pd.DataFrame, window_days: int = 3) -> list[dict]:
         if not matches.empty:
             dupes.append({
                 "type": "duplicate",
+                "id": int(row["id"]),
                 "description": row["description"],
                 "amount": row["amount"],
                 "date": row["date"].strftime("%Y-%m-%d"),

@@ -18,6 +18,7 @@ from finance_tui.screens.transactions import TransactionsPane
 from finance_tui.store import FinanceStore
 from finance_tui.watcher import DataChanged, FileWatcher
 from finance_tui.widgets.period_selector import PeriodSelector
+from finance_tui.widgets.alerts_panel import AlertsPanel
 from finance_tui.widgets.scroll_arrows import PanelDrillDown
 from finance_tui.widgets.search_bar import build_filter_mask
 from finance_tui.widgets.transaction_table import TransactionTable
@@ -448,6 +449,29 @@ class FinanceTUI(App):
             table.start_new_transaction(max_id + 1, filtered)
         except Exception:
             pass
+
+    # --- Alert validation ---
+    @on(AlertsPanel.ValidateAlerts)
+    def _on_validate_alerts(self, event: AlertsPanel.ValidateAlerts):
+        for txn_id in event.txn_ids:
+            row = self.store.df[self.store.df["id"] == txn_id]
+            if row.empty:
+                continue
+            row_data = row.iloc[0]
+            new_line = toggle_validated(row_data["raw_line"])
+
+            if self._watcher:
+                file_path = self.store.transactions_dir / row_data["source_file"]
+                self._watcher.ignore_next_change(str(file_path))
+
+            update_transaction_in_file(
+                row_data["source_file"], row_data["line_number"], new_line
+            )
+
+        self.store.load()
+        self._refresh_transactions_view()
+        count = len(event.txn_ids)
+        self.notify(f"Validated {count} transaction{'s' if count > 1 else ''}", timeout=2)
 
     # --- Command palette custom actions ---
     def action_custom(self, action_str: str):
