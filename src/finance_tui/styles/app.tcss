@@ -1,0 +1,458 @@
+/* ── Grayscale + Orange accent theme ── */
+
+$accent: #E8871E;
+$accent-dim: #A0621A;
+$positive: #5CB85C;
+$negative: #D9534F;
+$border-color: #555555;
+$border-dim: #3A3A3A;
+$text-bright: #E0E0E0;
+$text-normal: #BBBBBB;
+$text-dim: #777777;
+$bg-panel: #1A1A1A;
+$bg-surface: #111111;
+
+Screen {
+    background: transparent;
+    padding: 1 2;
+    layers: default overlay;
+}
+
+/* ── Footer ── */
+
+Footer {
+    background: transparent;
+    color: $text-dim;
+    dock: bottom;
+    height: 1;
+}
+
+/* ── Tabs ── */
+
+TabbedContent {
+    height: 1fr;
+}
+
+TabbedContent > ContentSwitcher {
+    height: 1fr;
+}
+
+TabPane {
+    padding: 0;
+}
+
+Tabs {
+    background: transparent;
+    height: 3;
+    dock: top;
+}
+
+Tab {
+    color: $text-dim;
+    background: transparent;
+    padding: 0 2;
+}
+
+Tab.-active {
+    color: $accent;
+    text-style: bold;
+}
+
+Tab:hover {
+    color: $text-bright;
+}
+
+Underline > .underline--bar {
+    color: $accent;
+}
+
+/* ── Top bar: logo (left) + filters + period (right) ── */
+
+#top-bar {
+    height: 2;
+    layout: horizontal;
+    background: transparent;
+    margin-bottom: 1;
+}
+
+#logo {
+    width: auto;
+    height: 2;
+    padding: 0 2 0 0;
+    background: transparent;
+}
+
+#active-filters {
+    width: 1fr;
+    height: 3;
+    padding: 0 2;
+    background: transparent;
+    content-align: left middle;
+}
+
+PeriodSelector {
+    width: auto;
+    height: 3;
+    padding: 0 2;
+    background: transparent;
+    color: $accent;
+    content-align: right middle;
+}
+
+/* ── Overview Layout ── */
+
+OverviewPane {
+    height: 1fr;
+    overflow-y: auto;
+}
+
+.kpi-row {
+    height: auto;
+    layout: horizontal;
+    padding: 0;
+    margin: 0 0 0 0;
+}
+
+.charts-row {
+    height: auto;
+    max-height: 22;
+    layout: horizontal;
+    margin: 0;
+}
+
+.bottom-row {
+    height: auto;
+    max-height: 14;
+    layout: horizontal;
+    margin: 0;
+}
+
+.half {
+    width: 1fr;
+}
+
+.quarter {
+    width: 1fr;
+}
+
+.third {
+    width: 1fr;
+}
+
+/* ── KPI Cards ── */
+
+KpiCard {
+    width: 1fr;
+    height: 3;
+    border: round $border-color;
+    background: $bg-panel;
+    padding: 0 1;
+    margin: 0;
+}
+
+KpiCard .kpi-value {
+    text-align: center;
+    text-style: bold;
+    color: $text-bright;
+}
+
+KpiCard .kpi-positive {
+    color: $positive;
+}
+
+KpiCard .kpi-negative {
+    color: $negative;
+}
+
+KpiCard .kpi-neutral {
+    color: $text-bright;
+}
+
+/* ── Scrollable panels: hide scrollbar, use ▲▼ arrows ── */
+
+ScrollablePanel {
+    scrollbar-size: 0 0;
+}
+
+ScrollablePanel:focus {
+    border: round $accent;
+}
+
+SpendingHeatmap:focus {
+    border: round $accent;
+}
+
+.panel-row-selected {
+    background: #2A2A2A;
+}
+
+/* ── Charts ── */
+
+ExpenseCategoryPanel {
+    width: 1fr;
+    height: 12;
+    border: round $border-color;
+    background: $bg-panel;
+    padding: 0 1;
+    margin: 0;
+}
+
+IncomeCategoryPanel {
+    width: 1fr;
+    height: 12;
+    border: round $border-color;
+    background: $bg-panel;
+    padding: 0 1;
+    margin: 0;
+}
+
+EvolutionChart {
+    height: 1fr;
+    border: round $border-color;
+    background: $bg-panel;
+    margin: 0;
+    padding: 1 1 1 0;
+}
+
+EvolutionChart:focus {
+    border: round $accent;
+}
+
+/* ── Heatmap ── */
+
+SpendingHeatmap {
+    height: 1fr;
+    border: round $border-color;
+    background: $bg-panel;
+    margin: 0;
+    padding: 0 1;
+}
+
+/* ── Account / Budget Panels ── */
+
+AccountPanel {
+    width: 1fr;
+    height: auto;
+    border: round $border-color;
+    background: $bg-panel;
+    padding: 0 1;
+    margin: 0;
+}
+
+BudgetPanel {
+    width: 1fr;
+    height: 12;
+    border: round $border-color;
+    background: $bg-panel;
+    padding: 0 1;
+    margin: 0;
+}
+
+.bar-row {
+    height: 1;
+    color: $text-normal;
+}
+
+.bar-ok {
+    color: $text-dim;
+}
+
+.bar-warn {
+    color: $accent;
+}
+
+.bar-over {
+    color: $negative;
+}
+
+/* ── Alerts Panel ── */
+
+.alerts-row {
+    height: 10;
+    margin: 0;
+}
+
+AlertsPanel {
+    width: 1fr;
+    height: 10;
+    border: round $border-color;
+    background: $bg-panel;
+    padding: 0 1;
+    margin: 0;
+}
+
+/* ── Transaction Table ── */
+
+TransactionsPane {
+    height: 1fr;
+}
+
+TransactionTable {
+    height: 1fr;
+    background: $bg-panel;
+    border: round $border-color;
+    padding-bottom: 1;
+    scrollbar-color: $border-dim;
+    scrollbar-color-hover: $border-color;
+    scrollbar-color-active: $accent;
+    scrollbar-background: $bg-surface;
+    scrollbar-background-hover: $bg-surface;
+    scrollbar-background-active: $bg-surface;
+    scrollbar-corner-color: $bg-surface;
+    scrollbar-size-vertical: 1;
+}
+
+DataTable > .datatable--header {
+    text-style: bold;
+    color: $accent;
+    background: $bg-panel;
+}
+
+DataTable > .datatable--cursor {
+    background: #2A2A2A;
+    color: $text-bright;
+}
+
+/* ── Command Palette ── */
+
+CommandPalette {
+    background: $bg-surface 70%;
+    align-horizontal: center;
+}
+
+/* Card — framed like overview panels */
+CommandPalette > Vertical {
+    visibility: visible;
+    background: $bg-panel;
+    border: round $border-color;
+    padding: 0 1 1 1;
+    margin-top: 3;
+    width: 72;
+    height: auto;
+    max-height: 24;
+}
+
+/* Search row — darker shade for input area */
+CommandPalette #--input {
+    background: $bg-surface;
+    border: none;
+    height: 3;
+    padding: 0 1;
+    visibility: visible;
+}
+
+CommandPalette #--input.--list-visible {
+    border: none;
+}
+
+/* Hide built-in search icon (replaced by border_title) */
+CommandPalette SearchIcon {
+    display: none;
+}
+
+/* Input field — vertically centered in the 3-row input area */
+CommandPalette CommandInput {
+    background: transparent;
+    border: none;
+    color: $text-bright;
+    margin-top: 1;
+}
+
+CommandPalette CommandInput:focus {
+    border: none;
+}
+
+/* Results — in-flow inside the card, panel background */
+CommandPalette #--results {
+    overlay: none;
+    background: $bg-panel;
+    border: none;
+    height: auto;
+    max-height: 18;
+    padding: 0;
+}
+
+/* Results list */
+CommandPalette CommandList {
+    background: $bg-panel;
+    border: none;
+    scrollbar-color: $border-dim;
+    scrollbar-color-hover: $border-color;
+    scrollbar-color-active: $accent;
+    scrollbar-background: $bg-panel;
+    scrollbar-size-vertical: 1;
+}
+
+/* Each result row */
+CommandPalette CommandList > .option-list--option {
+    color: $text-normal;
+    padding: 0 1;
+}
+
+/* Highlighted result */
+CommandPalette CommandList > .option-list--option-highlighted {
+    background: #2A2A2A;
+    color: $text-bright;
+}
+
+/* Help text (subtitle) */
+CommandPalette .command-palette--help-text {
+    color: $text-dim;
+    text-style: not bold;
+}
+
+/* Match highlight in results */
+CommandPalette .command-palette--highlight {
+    color: $accent;
+    text-style: bold;
+}
+
+/* Loading indicator — hidden, no border */
+CommandPalette LoadingIndicator {
+    display: none;
+}
+
+
+#txn-status {
+    dock: bottom;
+    height: 1;
+    padding: 0 1;
+    margin-bottom: 1;
+    background: $bg-panel;
+    color: $text-dim;
+}
+
+/* ── Category Change Dialog ── */
+
+CategoryChangeDialog {
+    align: center middle;
+}
+
+#dialog-container {
+    width: 50;
+    height: auto;
+    max-height: 20;
+    border: round $accent;
+    background: $bg-panel;
+    padding: 1 2;
+}
+
+#dialog-container Label {
+    margin: 0;
+    color: $text-normal;
+}
+
+#dialog-container Select {
+    margin: 1 0;
+}
+
+#dialog-buttons {
+    layout: horizontal;
+    height: auto;
+    margin-top: 1;
+}
+
+#dialog-buttons Button {
+    width: 1fr;
+    margin: 0 1;
+}
