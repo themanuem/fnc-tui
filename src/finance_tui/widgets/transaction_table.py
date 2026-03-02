@@ -53,11 +53,11 @@ _COL_FIELD = {
 # ── status icons ─────────────────────────────────────────
 _STATUS_ICONS = {
     "validated": ("◆", "#5CB85C"),
-    "unvalidated": ("△", "#E8871E"),
-    "outlier": ("△", "#E8871E"),
-    "duplicate": ("◇", "#777777"),
-    "budget_over": ("●", "#D9534F"),
-    "budget_warning": ("◐", "#E8871E"),
+    "unvalidated": ("◇", "#777777"),
+    "outlier": ("◆", "#E8871E"),
+    "duplicate": ("◆", "#E8871E"),
+    "budget_over": ("◆", "#E8871E"),
+    "budget_warning": ("◆", "#E8871E"),
 }
 
 
