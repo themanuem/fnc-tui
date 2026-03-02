@@ -9,17 +9,17 @@ from textual.widgets import Static
 from finance_tui.widgets.scroll_arrows import ScrollablePanel
 
 _ICONS = {
-    "budget_over": "●",
-    "budget_warning": "◐",
-    "outlier": "△",
-    "duplicate": "◇",
+    "budget_over": "◆",
+    "budget_warning": "◆",
+    "outlier": "◆",
+    "duplicate": "◆",
 }
 
 _COLORS = {
-    "budget_over": "#D9534F",
+    "budget_over": "#E8871E",
     "budget_warning": "#E8871E",
     "outlier": "#E8871E",
-    "duplicate": "#777777",
+    "duplicate": "#E8871E",
 }
 
 
