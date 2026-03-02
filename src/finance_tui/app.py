@@ -7,7 +7,9 @@ from textual import on
 from textual.app import App
 from textual.binding import Binding
 from textual.containers import Horizontal
-from textual.widgets import Footer, Static, TabbedContent, TabPane
+from textual.widgets import Footer, Static, Tab, TabbedContent, TabPane
+
+from finance_tui.widgets.filter_bar import FilterBar
 
 from finance_tui.commands import FinanceCommandProvider
 from finance_tui.config import FINANCE_DIR
@@ -74,6 +76,7 @@ class FinanceTUI(App):
         ("p", "period_prefix", "Period"),
         Binding("v", "validate_transaction", "Validate", show=False),
         Binding("c", "change_category_dialog", "Cat", show=False),
+        Binding("f", "focus_filters", "Filters", show=False),
         ("r", "reload_data", "Reload"),
         ("escape", "clear_filters", "Clear"),
         ("q", "quit", "Quit"),
@@ -87,14 +90,14 @@ class FinanceTUI(App):
         self._period_start = None
         self._period_end = None
         self._period_label = ""
-        self._drilldown_filters: dict[str, str] = {}  # panel_num → query
+        self._drilldown_filters: dict[str, tuple[str, bool]] = {}  # panel_num → (query, exclude)
         self._search_query: str = ""
         self._period_pending = False
 
     def compose(self):
         with Horizontal(id="top-bar"):
             yield Static(LOGO, id="logo")
-            yield Static("", id="active-filters")
+            yield FilterBar(id="active-filters")
             yield PeriodSelector(id="period")
         with TabbedContent(id="main-tabs"):
             with TabPane("Home", id="home"):
@@ -151,11 +154,12 @@ class FinanceTUI(App):
     def _on_panel_drill_down(self, event: PanelDrillDown):
         """Add/toggle a drill-down filter from a panel row."""
         panel_num = event.panel_id.replace("panel-", "") if event.panel_id else "?"
+        new_entry = (event.filter_query, event.exclude)
         existing = self._drilldown_filters.get(panel_num)
-        if existing == event.filter_query:
+        if existing == new_entry:
             del self._drilldown_filters[panel_num]
         else:
-            self._drilldown_filters[panel_num] = event.filter_query
+            self._drilldown_filters[panel_num] = new_entry
         self._update_filter_bar()
         self._refresh_all()
 
@@ -168,28 +172,58 @@ class FinanceTUI(App):
             self._refresh_all()
 
     def _update_filter_bar(self):
-        """Render active filter chips into the top bar."""
+        """Push current filter state to the FilterBar widget."""
         try:
-            widget = self.query_one("#active-filters", Static)
+            bar = self.query_one("#active-filters", FilterBar)
         except Exception:
             return
-        if not self._drilldown_filters and not self._search_query:
-            widget.update("")
-            return
-        line = Text()
-        for i, (num, query) in enumerate(self._drilldown_filters.items()):
-            if i > 0:
-                line.append("  ", style="#333333")
-            line.append(f"{num}", style="#E8871E bold")
-            line.append("·", style="#555555")
-            line.append(query, style="#BBBBBB")
+        entries: list[dict] = []
+        for num, (query, exclude) in self._drilldown_filters.items():
+            entries.append({"key": num, "query": query, "exclude": exclude, "type": "drilldown"})
         if self._search_query:
-            if self._drilldown_filters:
-                line.append("  ", style="#333333")
-            line.append("s", style="#E8871E bold")
-            line.append("·", style="#555555")
-            line.append(self._search_query, style="#BBBBBB")
-        widget.update(line)
+            entries.append({"key": "s", "query": self._search_query, "exclude": False, "type": "search"})
+        bar.set_filters(entries)
+
+    def action_focus_filters(self):
+        """Focus the filter bar for keyboard navigation."""
+        if not self._drilldown_filters and not self._search_query:
+            return
+        try:
+            bar = self.query_one("#active-filters", FilterBar)
+            bar.previous_focus = self.focused
+            bar.focus()
+        except Exception:
+            pass
+
+    @on(FilterBar.RemoveFilter)
+    def _on_filter_remove(self, event: FilterBar.RemoveFilter):
+        if event.filter_type == "drilldown":
+            self._drilldown_filters.pop(event.key, None)
+        elif event.filter_type == "search":
+            self._search_query = ""
+        self._update_filter_bar()
+        self._refresh_all()
+
+    @on(FilterBar.ToggleExclude)
+    def _on_filter_toggle_exclude(self, event: FilterBar.ToggleExclude):
+        entry = self._drilldown_filters.get(event.key)
+        if entry:
+            query, exclude = entry
+            self._drilldown_filters[event.key] = (query, not exclude)
+            self._update_filter_bar()
+            self._refresh_all()
+
+    @on(FilterBar.Dismiss)
+    def _on_filter_dismiss(self, event: FilterBar.Dismiss):
+        try:
+            bar = self.query_one("#active-filters", FilterBar)
+        except Exception:
+            return
+        if bar.previous_focus:
+            bar.previous_focus.focus()
+            bar.previous_focus = None
+        else:
+            self.action_focus_next()
 
     # --- Search (via command palette) ---
     def apply_search_filter(self, query: str):
@@ -211,6 +245,19 @@ class FinanceTUI(App):
         self.notify("Period: [a]ll  [y]ear  [m]onth", timeout=2)
 
     def on_key(self, event) -> None:
+        # Arrow up/down on the tab bar → navigate out like shift+tab / tab
+        if isinstance(self.focused, Tab):
+            if event.key == "down":
+                self.action_focus_next()
+                event.stop()
+                event.prevent_default()
+                return
+            elif event.key == "up":
+                self.action_focus_previous()
+                event.stop()
+                event.prevent_default()
+                return
+
         if not self._period_pending:
             return
         self._period_pending = False
@@ -251,9 +298,9 @@ class FinanceTUI(App):
             start = pd.Timestamp(self._period_start)
             end = pd.Timestamp(self._period_end)
             df = df[(df["date"] >= start) & (df["date"] < end)]
-        for query in self._drilldown_filters.values():
+        for query, exclude in self._drilldown_filters.values():
             mask = build_filter_mask(df, query)
-            df = df[mask]
+            df = df[~mask if exclude else mask]
         if self._search_query:
             mask = build_filter_mask(df, self._search_query)
             df = df[mask]

@@ -117,11 +117,14 @@ def detect_budget_alerts(
 
 def get_all_insights(df: pd.DataFrame, categories: dict) -> list[dict]:
     """Run all anomaly detections and return combined alerts."""
+    # Exclude validated (done) transactions from transaction-level alerts
+    unvalidated = df[~df["validated"]] if "validated" in df.columns else df
+
     insights = []
     insights.extend(detect_budget_alerts(df, categories))
-    insights.extend(detect_outliers(df))
+    insights.extend(detect_outliers(unvalidated))
     # Duplicate detection is expensive, limit to recent data
-    recent = df[df["date"] >= pd.Timestamp(date.today().replace(day=1))]
+    recent = unvalidated[unvalidated["date"] >= pd.Timestamp(date.today().replace(day=1))]
     insights.extend(detect_duplicates(recent))
     return insights
 

@@ -1,6 +1,7 @@
 """Overview screen - compact btop-style layout."""
 
 import pandas as pd
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 
@@ -15,6 +16,22 @@ from finance_tui.widgets.heatmap import SpendingHeatmap
 from finance_tui.widgets.kpi_card import KpiCard
 
 
+_SENTIMENT_COLORS = {
+    "positive": "#5CB85C",
+    "negative": "#D9534F",
+    "neutral": "#E0E0E0",
+}
+
+
+def _kpi_with_rate(main: str, sentiment: str, rate: float | None) -> Text:
+    """Build KPI text with an optional muted rate suffix."""
+    color = _SENTIMENT_COLORS.get(sentiment, "#E0E0E0")
+    text = Text(main, style=f"{color} bold")
+    if rate is not None:
+        text.append(f" ({rate:+.1f}%)", style="#777777")
+    return text
+
+
 class OverviewPane(Container):
     """Overview tab: compact KPIs, charts, accounts, budgets."""
 
@@ -27,21 +44,29 @@ class OverviewPane(Container):
         period = analytics.fiscal_period()
 
         balance = analytics.global_balance(df)
+        yoy_rate = analytics.balance_yoy_rate(df)
         count = analytics.transaction_count(df)
         growth = analytics.net_growth_mom(df)
+        growth_rate = analytics.net_growth_mom_rate(df)
         last_date = analytics.last_transaction_date(df)
+
+        bal_sentiment = "positive" if balance >= 0 else "negative"
+        balance_text = _kpi_with_rate(f"{balance:,.2f} {CURRENCY}", bal_sentiment, yoy_rate)
+
+        growth_sentiment = "positive" if growth >= 0 else "negative"
+        growth_text = _kpi_with_rate(f"{growth:+,.2f} {CURRENCY}", growth_sentiment, growth_rate)
 
         with Horizontal(classes="kpi-row"):
             yield KpiCard(
                 title="Balance",
-                value=f"{balance:,.2f} {CURRENCY}",
-                sentiment="positive" if balance >= 0 else "negative",
+                value=balance_text,
+                sentiment=bal_sentiment,
                 id="kpi-balance",
             )
             yield KpiCard(
                 title="MoM Growth",
-                value=f"{growth:+,.2f} {CURRENCY}",
-                sentiment="positive" if growth >= 0 else "negative",
+                value=growth_text,
+                sentiment=growth_sentiment,
                 id="kpi-growth",
             )
             yield KpiCard(
@@ -93,18 +118,23 @@ class OverviewPane(Container):
         """Refresh all overview panels and KPIs with filtered data."""
         # KPIs
         balance = analytics.global_balance(df)
+        yoy_rate = analytics.balance_yoy_rate(df)
         growth = analytics.net_growth_mom(df)
+        growth_rate = analytics.net_growth_mom_rate(df)
         count = analytics.transaction_count(df)
         last_date = analytics.last_transaction_date(df)
 
+        bal_sentiment = "positive" if balance >= 0 else "negative"
+        growth_sentiment = "positive" if growth >= 0 else "negative"
+
         try:
             self.query_one("#kpi-balance", KpiCard).update_value(
-                f"{balance:,.2f} {CURRENCY}",
-                "positive" if balance >= 0 else "negative",
+                _kpi_with_rate(f"{balance:,.2f} {CURRENCY}", bal_sentiment, yoy_rate),
+                bal_sentiment,
             )
             self.query_one("#kpi-growth", KpiCard).update_value(
-                f"{growth:+,.2f} {CURRENCY}",
-                "positive" if growth >= 0 else "negative",
+                _kpi_with_rate(f"{growth:+,.2f} {CURRENCY}", growth_sentiment, growth_rate),
+                growth_sentiment,
             )
             self.query_one("#kpi-count", KpiCard).update_value(
                 f"{count:,}", "neutral",

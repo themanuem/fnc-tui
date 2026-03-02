@@ -90,6 +90,10 @@ Underline > .underline--bar {
     content-align: left middle;
 }
 
+#active-filters:focus {
+    background: #1A1A1A;
+}
+
 PeriodSelector {
     width: auto;
     height: 3;
@@ -168,22 +172,28 @@ KpiCard .kpi-neutral {
     color: $text-bright;
 }
 
-/* ── Scrollable panels: hide scrollbar, use ▲▼ arrows ── */
+/* ── Panel tables (DataTable-based overview panels) ── */
 
-ScrollablePanel {
-    scrollbar-size: 0 0;
+PanelTable {
+    scrollbar-size-vertical: 1;
+    scrollbar-size-horizontal: 1;
+    scrollbar-color: $border-dim;
+    scrollbar-color-hover: $border-color;
+    scrollbar-color-active: $accent;
+    scrollbar-background: $bg-panel;
 }
 
-ScrollablePanel:focus {
+PanelTable:focus {
     border: round $accent;
+}
+
+PanelTable > .datatable--cursor {
+    background: #2A2A2A;
+    color: $text-bright;
 }
 
 SpendingHeatmap:focus {
     border: round $accent;
-}
-
-.panel-row-selected {
-    background: #2A2A2A;
 }
 
 /* ── Charts ── */
@@ -193,7 +203,7 @@ ExpenseCategoryPanel {
     height: 12;
     border: round $border-color;
     background: $bg-panel;
-    padding: 0 1;
+    padding: 1 1 0 1;
     margin: 0;
 }
 
@@ -202,7 +212,7 @@ IncomeCategoryPanel {
     height: 12;
     border: round $border-color;
     background: $bg-panel;
-    padding: 0 1;
+    padding: 1 1 0 1;
     margin: 0;
 }
 
@@ -221,7 +231,7 @@ EvolutionChart:focus {
 /* ── Heatmap ── */
 
 SpendingHeatmap {
-    height: 1fr;
+    height: auto;
     border: round $border-color;
     background: $bg-panel;
     margin: 0;
@@ -235,7 +245,7 @@ AccountPanel {
     height: auto;
     border: round $border-color;
     background: $bg-panel;
-    padding: 0 1;
+    padding: 1 1 0 1;
     margin: 0;
 }
 
@@ -244,26 +254,11 @@ BudgetPanel {
     height: 12;
     border: round $border-color;
     background: $bg-panel;
-    padding: 0 1;
+    padding: 1 1 0 1;
     margin: 0;
 }
 
-.bar-row {
-    height: 1;
-    color: $text-normal;
-}
-
-.bar-ok {
-    color: $text-dim;
-}
-
-.bar-warn {
-    color: $accent;
-}
-
-.bar-over {
-    color: $negative;
-}
+/* bar-row classes removed — panels now use DataTable rows */
 
 /* ── Alerts Panel ── */
 
@@ -277,7 +272,7 @@ AlertsPanel {
     height: 10;
     border: round $border-color;
     background: $bg-panel;
-    padding: 0 1;
+    padding: 1 1 0 1;
     margin: 0;
 }
 

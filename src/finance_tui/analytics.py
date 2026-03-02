@@ -12,6 +12,27 @@ def global_balance(df: pd.DataFrame) -> float:
     return round(df["amount"].sum(), 2)
 
 
+def balance_yoy_rate(df: pd.DataFrame) -> float | None:
+    """Year-over-year balance growth rate as a percentage.
+
+    Compares cumulative balance at end of current year vs end of prior year.
+    """
+    if df.empty or "date" not in df.columns:
+        return None
+
+    today = date.today()
+    current_year = today.year
+    prior_year = current_year - 1
+
+    bal_prior = df[df["date"].dt.year <= prior_year]["amount"].sum()
+    bal_current = df[df["date"].dt.year <= current_year]["amount"].sum()
+
+    if bal_prior == 0:
+        return None
+
+    return round((bal_current - bal_prior) / abs(bal_prior) * 100, 1)
+
+
 def transaction_count(df: pd.DataFrame) -> int:
     """Total number of transactions."""
     return len(df)
@@ -37,18 +58,30 @@ def month_total(df: pd.DataFrame, month: str) -> float:
 
 
 def net_growth_mom(df: pd.DataFrame, ref: date | None = None) -> float:
-    """Net growth: current month total minus previous month total."""
-    d = ref or date.today()
-    current = d.strftime("%Y-%m")
-    # Previous month
-    if d.month == 1:
-        prev = date(d.year - 1, 12, 1).strftime("%Y-%m")
-    else:
-        prev = date(d.year, d.month - 1, 1).strftime("%Y-%m")
+    """Average monthly net change: mean(month_total) over months in the data."""
+    if df.empty or "month" not in df.columns:
+        return 0.0
 
-    current_total = month_total(df, current)
-    prev_total = month_total(df, prev)
-    return round(current_total - prev_total, 2)
+    monthly_totals = df.groupby("month")["amount"].sum()
+    if monthly_totals.empty:
+        return 0.0
+
+    return round(monthly_totals.mean(), 2)
+
+
+def net_growth_mom_rate(df: pd.DataFrame) -> float | None:
+    """Average monthly net as a percentage of average monthly income."""
+    if df.empty or "month" not in df.columns:
+        return None
+
+    monthly_net = df.groupby("month")["amount"].sum()
+    monthly_income = df[df["is_income"]].groupby("month")["amount"].sum()
+
+    avg_income = monthly_income.mean() if not monthly_income.empty else 0.0
+    if avg_income == 0:
+        return None
+
+    return round(monthly_net.mean() / avg_income * 100, 1)
 
 
 def income_total(df: pd.DataFrame, month: str | None = None) -> float:
