@@ -33,6 +33,13 @@ class AlertsPanel(ScrollablePanel):
             super().__init__()
             self.txn_ids = txn_ids
 
+    class AlertIconsReady(Message):
+        """Posted after alerts load, carrying txn_id → alert_type map."""
+
+        def __init__(self, alert_map: dict[int, str]) -> None:
+            super().__init__()
+            self.alert_map = alert_map
+
     def __init__(self, store, **kwargs):
         super().__init__(**kwargs)
         self._store = store
@@ -102,7 +109,18 @@ class AlertsPanel(ScrollablePanel):
                     desc = item.get("description", item.get("message", ""))
                     self._filters.append(desc[:40] if desc else "")
 
+        # Build alert map: txn_id → alert_type
+        alert_map: dict[int, str] = {}
+        for item in insights:
+            txn_id = item.get("id")
+            if txn_id is not None:
+                alert_map[txn_id] = item["type"]
+
+        def _post_icons():
+            self.post_message(self.AlertIconsReady(alert_map))
+
         self.app.call_from_thread(_render)
+        self.app.call_from_thread(_post_icons)
 
     # ── multi-select ─────────────────────────────────────────
 

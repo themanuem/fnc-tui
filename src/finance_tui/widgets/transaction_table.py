@@ -16,18 +16,49 @@ _BG_EVEN = None
 _BG_ODD = "#222222"
 _PAGE_SIZE = 50
 
+# ── column layout ────────────────────────────────────────
+_COL_STATUS = 0
+_COL_ID = 1
+_COL_DATE = 2
+_COL_DESC = 3
+_COL_AMOUNT = 4
+_COL_CAT = 5
+_COL_ACCT = 6
+_COL_RUNSUM = 7
+_NUM_COLS = 8
+
 # Column index → edit type (None = disabled)
 _COL_TYPE = {
-    0: None,     # Id
-    1: "date",   # Date
-    2: "text",   # Description
-    3: "text",   # Amount
-    4: "enum",   # Category
-    5: "enum",   # Account
-    6: None,     # Running Sum
+    _COL_STATUS: None,
+    _COL_ID: None,
+    _COL_DATE: "date",
+    _COL_DESC: "text",
+    _COL_AMOUNT: "text",
+    _COL_CAT: "enum",
+    _COL_ACCT: "enum",
+    _COL_RUNSUM: None,
 }
 
-_EDITABLE_COLS = [1, 2, 3, 4, 5]
+_EDITABLE_COLS = [_COL_DATE, _COL_DESC, _COL_AMOUNT, _COL_CAT, _COL_ACCT]
+
+# col → DataFrame field name (for saving edits)
+_COL_FIELD = {
+    _COL_DATE: "date",
+    _COL_DESC: "description",
+    _COL_AMOUNT: "amount",
+    _COL_CAT: "category",
+    _COL_ACCT: "account",
+}
+
+# ── status icons ─────────────────────────────────────────
+_STATUS_ICONS = {
+    "validated": ("◆", "#5CB85C"),
+    "unvalidated": ("△", "#E8871E"),
+    "outlier": ("△", "#E8871E"),
+    "duplicate": ("◇", "#777777"),
+    "budget_over": ("●", "#D9534F"),
+    "budget_warning": ("◐", "#E8871E"),
+}
 
 
 class TransactionTable(DataTable):
@@ -97,15 +128,21 @@ class TransactionTable(DataTable):
         self._new_txn: dict | None = None
         # Column keys (set in on_mount)
         self._col_keys: list = []
+        # Alert icon overrides: txn_id → alert type string
+        self._alert_icons: dict[int, str] = {}
 
     def set_enums(self, categories: list[str], accounts: list[str]):
         """Update the category and account lists for enum cycling."""
         self._categories = sorted(categories)
         self._accounts = sorted(accounts)
 
+    def set_alert_icons(self, alert_map: dict[int, str]):
+        """Set per-transaction alert type overrides for the status column."""
+        self._alert_icons = alert_map
+
     def on_mount(self):
         self._col_keys = list(self.add_columns(
-            "Id", "Date", "Description", "Amount", "Category",
+            " ", "Id", "Date", "Description", "Amount", "Category",
             "Account", "Running Sum",
         ))
         self._update_sort_title()
@@ -126,6 +163,17 @@ class TransactionTable(DataTable):
             style += f" on {bg}"
         t.stylize(style)
         return t
+
+    def _status_cell(self, txn_id: int, validated: bool, bg: str | None = None) -> Text:
+        """Build the status icon cell for a transaction."""
+        if validated:
+            icon, color = _STATUS_ICONS["validated"]
+        elif txn_id in self._alert_icons:
+            alert_type = self._alert_icons[txn_id]
+            icon, color = _STATUS_ICONS.get(alert_type, _STATUS_ICONS["unvalidated"])
+        else:
+            icon, color = _STATUS_ICONS["unvalidated"]
+        return self._cell(icon, color, bg)
 
     @property
     def _total_pages(self) -> int:
@@ -281,16 +329,16 @@ class TransactionTable(DataTable):
         self._editing_txn_id = txn_id
         self._editing_row = current_row
         self._original_values = {
-            1: txn["date"].strftime("%Y-%m-%d"),
-            2: str(txn["description"]),
-            3: float(txn["amount"]),
-            4: str(txn["category"]),
-            5: str(txn["account"]),
+            _COL_DATE: txn["date"].strftime("%Y-%m-%d"),
+            _COL_DESC: str(txn["description"]),
+            _COL_AMOUNT: float(txn["amount"]),
+            _COL_CAT: str(txn["category"]),
+            _COL_ACCT: str(txn["account"]),
         }
         self._edit_values = {}
         self._edit_mode = "cell"
         self.cursor_type = "cell"
-        self.move_cursor(row=current_row, column=2)
+        self.move_cursor(row=current_row, column=_COL_DESC)
         self.add_class("editing")
 
     def _handle_cell_key(self, event):
@@ -332,7 +380,7 @@ class TransactionTable(DataTable):
             self.move_cursor(row=row, column=_EDITABLE_COLS[new_idx])
 
     def _cycle_enum(self, col: int, delta: int):
-        values = self._categories if col == 4 else self._accounts
+        values = self._categories if col == _COL_CAT else self._accounts
         if not values:
             return
         current = self._edit_values.get(col, self._original_values.get(col, ""))
@@ -346,7 +394,9 @@ class TransactionTable(DataTable):
         self._update_edit_cell(col, new_val)
 
     def _cycle_date(self, days: int = 0, months: int = 0):
-        current_str = str(self._edit_values.get(1, self._original_values.get(1, "")))
+        current_str = str(self._edit_values.get(
+            _COL_DATE, self._original_values.get(_COL_DATE, ""),
+        ))
         y, m, d = (int(x) for x in current_str.split("-"))
         current_date = date(y, m, d)
 
@@ -365,15 +415,15 @@ class TransactionTable(DataTable):
             current_date = date(new_y, new_m, min(current_date.day, max_day))
 
         date_str = current_date.strftime("%Y-%m-%d")
-        self._edit_values[1] = date_str
-        self._update_edit_cell(1, date_str)
+        self._edit_values[_COL_DATE] = date_str
+        self._update_edit_cell(_COL_DATE, date_str)
 
     def _update_edit_cell(self, col: int, value):
         """Update the visual cell content during editing."""
         row_key = self._get_editing_row_key()
         if row_key is None:
             return
-        if col == 3:
+        if col == _COL_AMOUNT:
             try:
                 amt = float(value)
                 color = "#5CB85C" if amt >= 0 else "#D9534F"
@@ -400,7 +450,6 @@ class TransactionTable(DataTable):
         key = event.key
 
         if key == "escape":
-            # Cancel text edit, back to cell mode
             self._edit_mode = "cell"
             col = self._text_col
             value = self._edit_values.get(col, self._original_values.get(col, ""))
@@ -513,7 +562,7 @@ class TransactionTable(DataTable):
         col = self._text_col
         if col is None:
             return
-        if col == 3:  # Amount
+        if col == _COL_AMOUNT:
             try:
                 self._edit_values[col] = float(self._text_buffer)
             except ValueError:
@@ -531,15 +580,19 @@ class TransactionTable(DataTable):
 
         if self._new_txn is not None:
             values = dict(self._new_txn)
-            field_map = {1: "date", 2: "description", 3: "amount", 4: "category", 5: "account"}
             for col, val in self._edit_values.items():
-                values[field_map[col]] = val
+                field = _COL_FIELD.get(col)
+                if field:
+                    values[field] = val
             self._new_txn = None
             self._exit_edit_mode(cancel=False)
             self.post_message(self.TransactionCreated(values))
         elif self._edit_values and self._editing_txn_id is not None:
-            field_map = {1: "date", 2: "description", 3: "amount", 4: "category", 5: "account"}
-            changes = {field_map[c]: v for c, v in self._edit_values.items()}
+            changes = {}
+            for col, val in self._edit_values.items():
+                field = _COL_FIELD.get(col)
+                if field:
+                    changes[field] = val
             txn_id = self._editing_txn_id
             self._exit_edit_mode(cancel=False)
             self.post_message(self.TransactionEdited(txn_id, changes))
@@ -552,7 +605,7 @@ class TransactionTable(DataTable):
             row_key = self._get_editing_row_key()
             if row_key is not None:
                 for col, val in self._original_values.items():
-                    if col == 3:
+                    if col == _COL_AMOUNT:
                         amt = float(val)
                         t = Text(f"{amt:+,.2f} {CURRENCY}")
                         t.stylize("#5CB85C" if amt >= 0 else "#D9534F")
@@ -616,16 +669,16 @@ class TransactionTable(DataTable):
                     self._editing_txn_id = None
                     self._editing_row = row_idx
                     self._original_values = {
-                        1: self._new_txn["date"],
-                        2: self._new_txn["description"],
-                        3: self._new_txn["amount"],
-                        4: self._new_txn["category"],
-                        5: self._new_txn["account"],
+                        _COL_DATE: self._new_txn["date"],
+                        _COL_DESC: self._new_txn["description"],
+                        _COL_AMOUNT: self._new_txn["amount"],
+                        _COL_CAT: self._new_txn["category"],
+                        _COL_ACCT: self._new_txn["account"],
                     }
                     self._edit_values = {}
                     self._edit_mode = "cell"
                     self.cursor_type = "cell"
-                    self.move_cursor(row=row_idx, column=2)
+                    self.move_cursor(row=row_idx, column=_COL_DESC)
                     self.add_class("editing")
                     return
             except Exception:
@@ -639,12 +692,14 @@ class TransactionTable(DataTable):
         self._update_sort_title()
 
         table_row = 0
+        e_count = _NUM_COLS  # number of empty cells per filler row
 
         # New transaction row at top
         if self._new_txn is not None:
             txn = self._new_txn
             amt = txn["amount"]
             self.add_row(
+                self._cell("△", "#888888"),
                 self._cell(str(txn["id"]), "#888888"),
                 self._cell(txn["date"]),
                 self._cell(txn["description"] or "…", "#888888"),
@@ -710,20 +765,23 @@ class TransactionTable(DataTable):
                 date_str = group_dates[g]
                 e = self._cell("", "#333333", bg)
                 self.add_row(
-                    e, e,
+                    e, e, e,
                     self._cell(
                         f"── {date_str}  Σ {day_sum:,.2f} {CURRENCY} ──",
                         "#555555", bg,
                     ),
-                    e, e, e, e,
+                    *[e] * (e_count - 4),
                     key=f"__day__{g}",
                 )
                 self._skip_rows.add(table_row)
                 table_row += 1
 
             amt = row["amount"]
+            txn_id = int(row["id"])
+            validated = bool(row.get("validated", False))
             self.add_row(
-                self._cell(str(row["id"]), bg=bg),
+                self._status_cell(txn_id, validated, bg),
+                self._cell(str(txn_id), bg=bg),
                 self._cell(row["date"].strftime("%Y-%m-%d"), bg=bg),
                 self._cell(str(row["description"]), bg=bg),
                 self._cell(
@@ -734,13 +792,13 @@ class TransactionTable(DataTable):
                 self._cell(str(row["category"]), bg=bg),
                 self._cell(str(row["account"]), bg=bg),
                 self._cell(f"{row['running_sum']:,.2f} {CURRENCY}", bg=bg),
-                key=str(row["id"]),
+                key=str(txn_id),
             )
             table_row += 1
 
             if i in last_indices:
                 e = self._cell("", bg=bg)
-                self.add_row(e, e, e, e, e, e, e, key=f"__empty__{g}")
+                self.add_row(*[e] * e_count, key=f"__empty__{g}")
                 self._skip_rows.add(table_row)
                 table_row += 1
 

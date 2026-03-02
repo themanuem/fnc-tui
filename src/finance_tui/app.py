@@ -450,6 +450,16 @@ class FinanceTUI(App):
         except Exception:
             pass
 
+    # --- Alert icons → transaction table ---
+    @on(AlertsPanel.AlertIconsReady)
+    def _on_alert_icons_ready(self, event: AlertsPanel.AlertIconsReady):
+        try:
+            table = self.query_one("#txn-table", TransactionTable)
+            table.set_alert_icons(event.alert_map)
+            table._render_rows()
+        except Exception:
+            pass
+
     # --- Alert validation ---
     @on(AlertsPanel.ValidateAlerts)
     def _on_validate_alerts(self, event: AlertsPanel.ValidateAlerts):
