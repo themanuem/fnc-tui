@@ -1,12 +1,10 @@
 """Category breakdown panels - btop disk-style compact bars."""
 
 from rich.text import Text
-from textual.app import ComposeResult
-from textual.widgets import Static
 
 from finance_tui import analytics
 from finance_tui.config import CURRENCY
-from finance_tui.widgets.scroll_arrows import ScrollablePanel
+from finance_tui.widgets.panel_table import PanelTable
 
 _BAR_WIDTH = 14
 _FILL = "▪"
@@ -24,7 +22,7 @@ def _shade(ratio: float, palette: list[str]) -> str:
     return palette[idx]
 
 
-class ExpenseCategoryPanel(ScrollablePanel):
+class ExpenseCategoryPanel(PanelTable):
     """Compact expense breakdown with color-coded bars (red shades)."""
 
     def __init__(self, df, month: str | None = None, **kwargs):
@@ -33,17 +31,20 @@ class ExpenseCategoryPanel(ScrollablePanel):
         self._month = month
         self.border_title = "Expenses by Category"
 
-    def compose(self) -> ComposeResult:
-        self._filters = []
+    def on_mount(self) -> None:
+        self._build_rows()
+
+    def _build_rows(self) -> None:
         expenses = analytics.expenses_by_category(self._df, self._month)
         if not expenses:
-            self._filters.append("")
-            yield Static(" No expenses", classes="bar-row")
+            line = Text(" No expenses", style="#555555")
+            self._load_rows([(line, "")])
             return
 
         sorted_cats = sorted(expenses.items(), key=lambda x: x[1])
         max_abs = max(abs(v) for _, v in sorted_cats) or 1
 
+        rows: list[tuple[Text, str]] = []
         for cat, val in sorted_cats:
             abs_val = abs(val)
             ratio = abs_val / max_abs
@@ -57,18 +58,17 @@ class ExpenseCategoryPanel(ScrollablePanel):
             line.append(_EMPTY * empty, style="#2A2A2A")
             line.append(f" {abs_val:>9,.2f} {CURRENCY}", style="#777777")
 
-            self._filters.append(f"cat:{cat} <0")
-            yield Static(line, classes="bar-row")
+            rows.append((line, f"cat:{cat} <0"))
+
+        self._load_rows(rows)
 
     def refresh_data(self, df, month: str | None = None):
         self._df = df
         self._month = month
-        self.remove_children()
-        for w in self.compose():
-            self.mount(w)
+        self._build_rows()
 
 
-class IncomeCategoryPanel(ScrollablePanel):
+class IncomeCategoryPanel(PanelTable):
     """Compact income breakdown with color-coded bars (green shades)."""
 
     def __init__(self, df, month: str | None = None, **kwargs):
@@ -77,17 +77,20 @@ class IncomeCategoryPanel(ScrollablePanel):
         self._month = month
         self.border_title = "Income by Category"
 
-    def compose(self) -> ComposeResult:
-        self._filters = []
+    def on_mount(self) -> None:
+        self._build_rows()
+
+    def _build_rows(self) -> None:
         income = analytics.income_by_category(self._df, self._month)
         if not income:
-            self._filters.append("")
-            yield Static(" No income", classes="bar-row")
+            line = Text(" No income", style="#555555")
+            self._load_rows([(line, "")])
             return
 
         sorted_cats = sorted(income.items(), key=lambda x: x[1], reverse=True)
         max_val = max(v for _, v in sorted_cats) or 1
 
+        rows: list[tuple[Text, str]] = []
         for cat, val in sorted_cats:
             ratio = val / max_val
             filled = max(1, int(ratio * _BAR_WIDTH))
@@ -100,12 +103,11 @@ class IncomeCategoryPanel(ScrollablePanel):
             line.append(_EMPTY * empty, style="#2A2A2A")
             line.append(f" {val:>9,.2f} {CURRENCY}", style="#777777")
 
-            self._filters.append(f"cat:{cat} >0")
-            yield Static(line, classes="bar-row")
+            rows.append((line, f"cat:{cat} >0"))
+
+        self._load_rows(rows)
 
     def refresh_data(self, df, month: str | None = None):
         self._df = df
         self._month = month
-        self.remove_children()
-        for w in self.compose():
-            self.mount(w)
+        self._build_rows()

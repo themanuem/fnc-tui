@@ -9,6 +9,7 @@ from finance_tui import analytics
 from finance_tui.config import CURRENCY
 from finance_tui.widgets.account_table import AccountPanel
 from finance_tui.widgets.alerts_panel import AlertsPanel
+from finance_tui.widgets.annotations_panel import AnnotationsPanel
 from finance_tui.widgets.budget_bar import BudgetPanel
 from finance_tui.widgets.donut_chart import ExpenseCategoryPanel, IncomeCategoryPanel
 from finance_tui.widgets.evolution_chart import EvolutionChart
@@ -110,9 +111,13 @@ class OverviewPane(Container):
             bud.border_title = "6·Months Over Budget"
             yield bud
 
-        alerts = AlertsPanel(self.store, classes="alerts-row", id="panel-7")
-        alerts.border_title = "7·Alerts"
-        yield alerts
+        with Horizontal(classes="alerts-row"):
+            alerts = AlertsPanel(self.store, id="panel-7")
+            alerts.border_title = "7·Alerts"
+            yield alerts
+            ann = AnnotationsPanel(df, id="panel-8")
+            ann.border_title = "8·Tags & Links"
+            yield ann
 
     def refresh_data(self, df: pd.DataFrame, period_label: str = ""):
         """Refresh all overview panels and KPIs with filtered data."""
@@ -159,5 +164,6 @@ class OverviewPane(Container):
             self.query_one("#panel-5", IncomeCategoryPanel).refresh_data(df)
             self.query_one("#panel-6", BudgetPanel).refresh_data(df)
             self.query_one("#panel-7", AlertsPanel).refresh_data(df)
+            self.query_one("#panel-8", AnnotationsPanel).refresh_data(df)
         except Exception:
             pass

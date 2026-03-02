@@ -42,39 +42,51 @@ def detect_outliers(df: pd.DataFrame, z_threshold: float = 2.5) -> list[dict]:
     ]
 
 
-def detect_duplicates(df: pd.DataFrame, window_days: int = 3) -> list[dict]:
-    """Find potential duplicate charges (same amount + similar date)."""
+def detect_duplicates(df: pd.DataFrame, similarity: float = 0.8) -> list[dict]:
+    """Find potential duplicate charges (same date, amount, account, fuzzy description)."""
+    from difflib import SequenceMatcher
+
     if df.empty:
         return []
 
     dupes = []
     expenses = df[df["is_expense"]].sort_values("date")
 
-    for i, row in expenses.iterrows():
-        matches = expenses[
-            (expenses.index != i)
-            & (expenses["amount"] == row["amount"])
-            & (abs((expenses["date"] - row["date"]).dt.days) <= window_days)
-            & (expenses["description"] == row["description"])
-        ]
-        if not matches.empty:
-            dupes.append({
-                "type": "duplicate",
-                "id": int(row["id"]),
-                "description": row["description"],
-                "amount": row["amount"],
-                "date": row["date"].strftime("%Y-%m-%d"),
-                "count": len(matches) + 1,
-                "message": f"Possible duplicate: {row['description']} ({row['amount']:.2f} €) appears {len(matches) + 1} times within {window_days} days",
-            })
+    # Group by (date, amount, account) then fuzzy-match descriptions within groups
+    grouped = expenses.groupby(
+        [expenses["date"], expenses["amount"], expenses["account"]],
+    )
+    for _, group in grouped:
+        if len(group) < 2:
+            continue
+        rows = list(group.itertuples())
+        matched = set()
+        for a in range(len(rows)):
+            for b in range(a + 1, len(rows)):
+                ra, rb = rows[a], rows[b]
+                ratio = SequenceMatcher(
+                    None, ra.description.lower(), rb.description.lower(),
+                ).ratio()
+                if ratio >= similarity:
+                    for r in (ra, rb):
+                        if r.Index not in matched:
+                            matched.add(r.Index)
+                            dupes.append({
+                                "type": "duplicate",
+                                "id": int(r.id),
+                                "description": r.description,
+                                "amount": r.amount,
+                                "account": r.account,
+                                "date": r.date.strftime("%Y-%m-%d"),
+                                "message": f"Possible duplicate: {r.description} ({r.amount:.2f} €) on {r.date.strftime('%Y-%m-%d')}",
+                            })
 
-    # Deduplicate alerts
+    # One alert per txn_id
     seen = set()
     unique = []
     for d in dupes:
-        key = (d["description"], d["amount"])
-        if key not in seen:
-            seen.add(key)
+        if d["id"] not in seen:
+            seen.add(d["id"])
             unique.append(d)
     return unique
 
@@ -121,11 +133,8 @@ def get_all_insights(df: pd.DataFrame, categories: dict) -> list[dict]:
     unvalidated = df[~df["validated"]] if "validated" in df.columns else df
 
     insights = []
-    insights.extend(detect_budget_alerts(df, categories))
     insights.extend(detect_outliers(unvalidated))
-    # Duplicate detection is expensive, limit to recent data
-    recent = unvalidated[unvalidated["date"] >= pd.Timestamp(date.today().replace(day=1))]
-    insights.extend(detect_duplicates(recent))
+    insights.extend(detect_duplicates(unvalidated))
     return insights
 
 

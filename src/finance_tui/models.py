@@ -17,6 +17,8 @@ class Transaction:
     line_number: int
     raw_line: str
     people: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)   # #tag entries (stored without #)
+    links: list[str] = field(default_factory=list)  # [[wikilink]] entries (stored without brackets)
 
     @property
     def is_expense(self) -> bool:

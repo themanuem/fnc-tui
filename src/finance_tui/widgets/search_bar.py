@@ -15,13 +15,13 @@ def tokenize_query(query: str) -> list[str]:
     remainder = query.strip()
     while remainder:
         # Match prefix tokens that may contain spaces (person:)
-        m = re.match(r"(person:\S+(?:\s+\S+)*?)(?=\s+(?:cat:|acc:|person:|[><]\d)|$)", remainder)
+        m = re.match(r"(person:\S+(?:\s+\S+)*?)(?=\s+(?:cat:|acc:|tag:|link:|person:|[><]\d)|$)", remainder)
         if m:
             tokens.append(m.group(1))
             remainder = remainder[m.end():].lstrip()
             continue
         # Match other prefix tokens or operators
-        m = re.match(r"((?:cat|acc):\S+|[><]-?\d+\.?\d*|\S+)", remainder)
+        m = re.match(r"((?:cat|acc|tag|link):\S+|[><]-?\d+\.?\d*|\S+)", remainder)
         if m:
             tokens.append(m.group(1))
             remainder = remainder[m.end():].lstrip()
@@ -55,6 +55,24 @@ def build_filter_mask(df: pd.DataFrame, query: str) -> pd.Series:
         m = re.match(r"acc:(.+)", token, re.IGNORECASE)
         if m:
             mask = mask & df["account"].str.lower().str.contains(m.group(1).lower(), na=False)
+            continue
+
+        m = re.match(r"tag:(.+)", token, re.IGNORECASE)
+        if m:
+            tag = m.group(1).strip().lower()
+            if "tags" in df.columns:
+                mask = mask & df["tags"].apply(
+                    lambda ts, t=tag: any(t.lower() in x.lower() for x in ts) if isinstance(ts, list) else False
+                )
+            continue
+
+        m = re.match(r"link:(.+)", token, re.IGNORECASE)
+        if m:
+            link = m.group(1).strip().lower()
+            if "links" in df.columns:
+                mask = mask & df["links"].apply(
+                    lambda ls, l=link: any(l in x.lower() for x in ls) if isinstance(ls, list) else False
+                )
             continue
 
         m = re.match(r"person:(.+)", token, re.IGNORECASE)
@@ -93,7 +111,7 @@ class SearchBar(Input):
 
     def __init__(self, df: pd.DataFrame, **kwargs):
         super().__init__(
-            placeholder="Search: cat:Food  acc:Revolut_01  person:Mom  >100  <-50  or free text...",
+            placeholder="Search: cat:Food  acc:Bank_01  tag:grocery  link:Budget  person:Mom  >100  <-50  or text...",
             **kwargs,
         )
         self._df = df

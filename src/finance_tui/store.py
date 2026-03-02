@@ -59,6 +59,8 @@ class FinanceStore:
                 "line_number": t.line_number,
                 "raw_line": t.raw_line,
                 "people": t.people,
+                "tags": t.tags,
+                "links": t.links,
             })
 
         df = pd.DataFrame(records)

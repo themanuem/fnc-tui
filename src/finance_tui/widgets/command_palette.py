@@ -16,6 +16,8 @@ _PREFIX_MAP = {
     "Category": "cat:",
     "Account": "acc:",
     "Period": "period:",
+    "Tag": "tag:",
+    "Link": "link:",
 }
 
 

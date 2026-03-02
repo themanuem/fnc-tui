@@ -25,7 +25,9 @@ _COL_AMOUNT = 4
 _COL_CAT = 5
 _COL_ACCT = 6
 _COL_RUNSUM = 7
-_NUM_COLS = 8
+_COL_TAGS = 8
+_COL_LINKS = 9
+_NUM_COLS = 10
 
 # Column index → edit type (None = disabled)
 _COL_TYPE = {
@@ -37,9 +39,11 @@ _COL_TYPE = {
     _COL_CAT: "enum",
     _COL_ACCT: "enum",
     _COL_RUNSUM: None,
+    _COL_TAGS: "text",
+    _COL_LINKS: "text",
 }
 
-_EDITABLE_COLS = [_COL_DATE, _COL_DESC, _COL_AMOUNT, _COL_CAT, _COL_ACCT]
+_EDITABLE_COLS = [_COL_DATE, _COL_DESC, _COL_AMOUNT, _COL_CAT, _COL_ACCT, _COL_TAGS, _COL_LINKS]
 
 # col → DataFrame field name (for saving edits)
 _COL_FIELD = {
@@ -48,6 +52,8 @@ _COL_FIELD = {
     _COL_AMOUNT: "amount",
     _COL_CAT: "category",
     _COL_ACCT: "account",
+    _COL_TAGS: "tags",
+    _COL_LINKS: "links",
 }
 
 # ── status icons ─────────────────────────────────────────
@@ -55,9 +61,7 @@ _STATUS_ICONS = {
     "validated": ("◆", "#5CB85C"),
     "unvalidated": ("◇", "#777777"),
     "outlier": ("◆", "#E8871E"),
-    "duplicate": ("◆", "#E8871E"),
-    "budget_over": ("◆", "#E8871E"),
-    "budget_warning": ("◆", "#E8871E"),
+    "duplicate": ("⊘", "#E8871E"),
 }
 
 
@@ -130,6 +134,8 @@ class TransactionTable(DataTable):
         self._col_keys: list = []
         # Alert icon overrides: txn_id → alert type string
         self._alert_icons: dict[int, str] = {}
+        # Multi-select: persists across pages, keyed on txn_id
+        self._multi_selected: set[int] = set()
 
     def set_enums(self, categories: list[str], accounts: list[str]):
         """Update the category and account lists for enum cycling."""
@@ -143,7 +149,7 @@ class TransactionTable(DataTable):
     def on_mount(self):
         self._col_keys = list(self.add_columns(
             " ", "Id", "Date", "Description", "Amount", "Category",
-            "Account", "Running Sum",
+            "Account", "Running Sum", "Tags", "Links",
         ))
         self._update_sort_title()
 
@@ -151,6 +157,7 @@ class TransactionTable(DataTable):
         """Load transaction data from a DataFrame."""
         self._df = df.copy()
         self._page = 0
+        self._multi_selected.clear()
         self._exit_edit_mode(cancel=True)
         self._render_rows()
 
@@ -166,6 +173,8 @@ class TransactionTable(DataTable):
 
     def _status_cell(self, txn_id: int, validated: bool, bg: str | None = None) -> Text:
         """Build the status icon cell for a transaction."""
+        if txn_id in self._multi_selected:
+            return self._cell("∗", "#E8871E", bg)
         if validated:
             icon, color = _STATUS_ICONS["validated"]
         elif txn_id in self._alert_icons:
@@ -174,6 +183,34 @@ class TransactionTable(DataTable):
         else:
             icon, color = _STATUS_ICONS["unvalidated"]
         return self._cell(icon, color, bg)
+
+    def _tags_cell(self, tags: list, bg: str | None = None) -> Text:
+        """Build styled Text for tags (displayed with # prefix, cyan)."""
+        if not tags:
+            return self._cell("", bg=bg)
+        t = Text()
+        style = "#4FC1E9"
+        if bg:
+            style += f" on {bg}"
+        for i, tag in enumerate(tags):
+            if i > 0:
+                t.append(", ", style=f"#BBBBBB on {bg}" if bg else "#BBBBBB")
+            t.append(tag, style=style)
+        return t
+
+    def _links_cell(self, links: list, bg: str | None = None) -> Text:
+        """Build styled Text for links (displayed with [[]] wrapper, purple)."""
+        if not links:
+            return self._cell("", bg=bg)
+        t = Text()
+        style = "#AC92EC"
+        if bg:
+            style += f" on {bg}"
+        for i, link in enumerate(links):
+            if i > 0:
+                t.append(", ", style=f"#BBBBBB on {bg}" if bg else "#BBBBBB")
+            t.append(link, style=style)
+        return t
 
     @property
     def _total_pages(self) -> int:
@@ -186,11 +223,16 @@ class TransactionTable(DataTable):
         name = "Id" if self._sort_col == "id" else "Date"
         page_info = f"{self._page + 1}/{self._total_pages}"
         self.border_title = f"{name} {arrow}  {page_info}"
+        sel_count = len(self._multi_selected)
+        sel_hint = f"  [#E8871E bold]{sel_count} sel[/]" if sel_count else ""
         self.border_subtitle = (
+            "[#E8871E]space[/]·Sel  "
             "[#E8871E]i[/]·Id  [#E8871E]d[/]·Date  "
             "[#E8871E]v[/]·Validate  [#E8871E]c[/]·Cat  "
+            "[#E8871E]m[/]·Tags  [#E8871E]w[/]·Links  "
             "[#E8871E]l[/]·Log  "
             "[#E8871E]p[/]·Prev  [#E8871E]n[/]·Next"
+            + sel_hint
         )
 
     def _get_editing_row_key(self):
@@ -227,6 +269,44 @@ class TransactionTable(DataTable):
 
         if self._edit_mode == "cell":
             self._handle_cell_key(event)
+            event.stop()
+            event.prevent_default()
+            return
+
+        # Row mode: multi-select keys
+        if event.key == "space":
+            self._toggle_multi_select()
+            event.stop()
+            event.prevent_default()
+            return
+
+        if event.key == "ctrl+a":
+            self._select_all_page()
+            event.stop()
+            event.prevent_default()
+            return
+
+        if event.key == "ctrl+shift+a":
+            self._select_all_global()
+            event.stop()
+            event.prevent_default()
+            return
+
+        if event.key in ("shift+up", "shift+down"):
+            self._extend_selection(event.key)
+            event.stop()
+            event.prevent_default()
+            return
+
+        # Row mode: direct column shortcuts
+        if event.key == "m":
+            self._enter_cell_mode_at(_COL_TAGS)
+            event.stop()
+            event.prevent_default()
+            return
+
+        if event.key == "w":
+            self._enter_cell_mode_at(_COL_LINKS)
             event.stop()
             event.prevent_default()
             return
@@ -301,6 +381,109 @@ class TransactionTable(DataTable):
             self._update_sort_title()
             self._render_rows()
 
+    # ── multi-select ──────────────────────────────────────────
+
+    def _toggle_multi_select(self):
+        """Toggle the current row's txn_id in the multi-select set."""
+        if self.row_count == 0:
+            return
+        current_row = self.cursor_coordinate.row
+        if current_row in self._skip_rows:
+            return
+        try:
+            rk, _ = self.coordinate_to_cell_key(Coordinate(current_row, 0))
+        except Exception:
+            return
+        key_val = str(rk.value)
+        if key_val.startswith("__"):
+            return
+        txn_id = int(key_val)
+        if txn_id in self._multi_selected:
+            self._multi_selected.discard(txn_id)
+        else:
+            self._multi_selected.add(txn_id)
+        # Update status cell in-place
+        if self._df is not None:
+            txn = self._df[self._df["id"] == txn_id]
+            if not txn.empty:
+                validated = bool(txn.iloc[0].get("validated", False))
+                self.update_cell(rk, self._col_keys[_COL_STATUS], self._status_cell(txn_id, validated))
+        self._update_sort_title()
+
+    def _get_page_txn_ids(self) -> list[int]:
+        """Return all txn_ids visible on the current page."""
+        ids = []
+        for row_idx in range(self.row_count):
+            if row_idx in self._skip_rows:
+                continue
+            try:
+                rk, _ = self.coordinate_to_cell_key(Coordinate(row_idx, 0))
+            except Exception:
+                continue
+            key_val = str(rk.value)
+            if key_val.startswith("__"):
+                continue
+            ids.append(int(key_val))
+        return ids
+
+    def _select_all_page(self):
+        """Toggle-select all transactions on the current page (ctrl+a)."""
+        page_ids = set(self._get_page_txn_ids())
+        if page_ids <= self._multi_selected:
+            # All already selected → deselect page
+            self._multi_selected -= page_ids
+        else:
+            self._multi_selected |= page_ids
+        self._render_rows()
+        self._update_sort_title()
+
+    def _select_all_global(self):
+        """Toggle-select all transactions across all pages (ctrl+shift+a)."""
+        if self._df is None or self._df.empty:
+            return
+        all_ids = set(self._df["id"].astype(int).tolist())
+        if all_ids <= self._multi_selected:
+            self._multi_selected.clear()
+        else:
+            self._multi_selected = all_ids
+        self._render_rows()
+        self._update_sort_title()
+
+    def _extend_selection(self, key: str):
+        """Select the current row and move cursor in direction (shift+up/down)."""
+        # Select current row first
+        self._toggle_multi_select_add()
+        # Move cursor
+        if key == "shift+down":
+            self.action_cursor_down()
+        else:
+            self.action_cursor_up()
+        # Select the new row too
+        self._toggle_multi_select_add()
+
+    def _toggle_multi_select_add(self):
+        """Add the current row's txn_id to multi-select (no toggle-off)."""
+        if self.row_count == 0:
+            return
+        current_row = self.cursor_coordinate.row
+        if current_row in self._skip_rows:
+            return
+        try:
+            rk, _ = self.coordinate_to_cell_key(Coordinate(current_row, 0))
+        except Exception:
+            return
+        key_val = str(rk.value)
+        if key_val.startswith("__"):
+            return
+        txn_id = int(key_val)
+        self._multi_selected.add(txn_id)
+        if self._df is not None:
+            txn = self._df[self._df["id"] == txn_id]
+            if not txn.empty:
+                validated = bool(txn.iloc[0].get("validated", False))
+                self.update_cell(rk, self._col_keys[_COL_STATUS], self._status_cell(txn_id, validated))
+        self._update_sort_title()
+
     # ── cell mode ────────────────────────────────────────────
 
     def _enter_cell_mode(self):
@@ -328,18 +511,34 @@ class TransactionTable(DataTable):
 
         self._editing_txn_id = txn_id
         self._editing_row = current_row
+        tags = txn.get("tags", [])
+        if not isinstance(tags, list):
+            tags = []
+        links = txn.get("links", [])
+        if not isinstance(links, list):
+            links = []
         self._original_values = {
             _COL_DATE: txn["date"].strftime("%Y-%m-%d"),
             _COL_DESC: str(txn["description"]),
             _COL_AMOUNT: float(txn["amount"]),
             _COL_CAT: str(txn["category"]),
             _COL_ACCT: str(txn["account"]),
+            _COL_TAGS: ", ".join(tags),
+            _COL_LINKS: ", ".join(links),
         }
         self._edit_values = {}
         self._edit_mode = "cell"
         self.cursor_type = "cell"
         self.move_cursor(row=current_row, column=_COL_DESC)
         self.add_class("editing")
+
+    def _enter_cell_mode_at(self, col: int):
+        """Enter cell mode and immediately open text edit on the given column."""
+        self._enter_cell_mode()
+        if self._edit_mode != "cell":
+            return
+        self.move_cursor(row=self._editing_row, column=col)
+        self._enter_text_mode(col)
 
     def _handle_cell_key(self, event):
         col = self.cursor_coordinate.column
@@ -431,6 +630,12 @@ class TransactionTable(DataTable):
                 text.stylize(color)
             except (ValueError, TypeError):
                 text = self._cell(str(value))
+        elif col == _COL_TAGS:
+            items = [x.strip() for x in str(value).split(",") if x.strip()]
+            text = self._tags_cell(items)
+        elif col == _COL_LINKS:
+            items = [x.strip() for x in str(value).split(",") if x.strip()]
+            text = self._links_cell(items)
         else:
             text = self._cell(str(value))
         self.update_cell(row_key, self._col_keys[col], text)
@@ -583,6 +788,8 @@ class TransactionTable(DataTable):
             for col, val in self._edit_values.items():
                 field = _COL_FIELD.get(col)
                 if field:
+                    if field in ("tags", "links"):
+                        val = [t.strip() for t in str(val).split(",") if t.strip()]
                     values[field] = val
             self._new_txn = None
             self._exit_edit_mode(cancel=False)
@@ -592,6 +799,8 @@ class TransactionTable(DataTable):
             for col, val in self._edit_values.items():
                 field = _COL_FIELD.get(col)
                 if field:
+                    if field in ("tags", "links"):
+                        val = [t.strip() for t in str(val).split(",") if t.strip()]
                     changes[field] = val
             txn_id = self._editing_txn_id
             self._exit_edit_mode(cancel=False)
@@ -609,6 +818,12 @@ class TransactionTable(DataTable):
                         amt = float(val)
                         t = Text(f"{amt:+,.2f} {CURRENCY}")
                         t.stylize("#5CB85C" if amt >= 0 else "#D9534F")
+                    elif col == _COL_TAGS:
+                        items = [x.strip() for x in str(val).split(",") if x.strip()]
+                        t = self._tags_cell(items)
+                    elif col == _COL_LINKS:
+                        items = [x.strip() for x in str(val).split(",") if x.strip()]
+                        t = self._links_cell(items)
                     else:
                         t = self._cell(str(val))
                     try:
@@ -654,6 +869,8 @@ class TransactionTable(DataTable):
             "amount": 0.0,
             "category": category,
             "account": account,
+            "tags": [],
+            "links": [],
         }
         if df is not None:
             self._df = df.copy()
@@ -674,6 +891,8 @@ class TransactionTable(DataTable):
                         _COL_AMOUNT: self._new_txn["amount"],
                         _COL_CAT: self._new_txn["category"],
                         _COL_ACCT: self._new_txn["account"],
+                        _COL_TAGS: "",
+                        _COL_LINKS: "",
                     }
                     self._edit_values = {}
                     self._edit_mode = "cell"
@@ -710,6 +929,8 @@ class TransactionTable(DataTable):
                 self._cell(txn["category"]),
                 self._cell(txn["account"]),
                 self._cell("—", "#555555"),
+                self._tags_cell(txn.get("tags", [])),
+                self._links_cell(txn.get("links", [])),
                 key="__new__",
             )
             table_row += 1
@@ -779,6 +1000,12 @@ class TransactionTable(DataTable):
             amt = row["amount"]
             txn_id = int(row["id"])
             validated = bool(row.get("validated", False))
+            tags = row.get("tags", [])
+            if not isinstance(tags, list):
+                tags = []
+            links = row.get("links", [])
+            if not isinstance(links, list):
+                links = []
             self.add_row(
                 self._status_cell(txn_id, validated, bg),
                 self._cell(str(txn_id), bg=bg),
@@ -792,6 +1019,8 @@ class TransactionTable(DataTable):
                 self._cell(str(row["category"]), bg=bg),
                 self._cell(str(row["account"]), bg=bg),
                 self._cell(f"{row['running_sum']:,.2f} {CURRENCY}", bg=bg),
+                self._tags_cell(tags, bg),
+                self._links_cell(links, bg),
                 key=str(txn_id),
             )
             table_row += 1

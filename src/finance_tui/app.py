@@ -71,6 +71,7 @@ class FinanceTUI(App):
         Binding("5", "focus_panel('panel-5')", "Panel 5", show=False),
         Binding("6", "focus_panel('panel-6')", "Panel 6", show=False),
         Binding("7", "focus_panel('panel-7')", "Panel 7", show=False),
+        Binding("8", "focus_panel('panel-8')", "Panel 8", show=False),
         ("left_square_bracket", "period_prev", "◀"),
         ("right_square_bracket", "period_next", "▶"),
         ("p", "period_prefix", "Period"),
@@ -357,28 +358,40 @@ class FinanceTUI(App):
         except Exception:
             return
 
-        row_key, _ = table.coordinate_to_cell_key(table.cursor_coordinate)
-        if not row_key:
-            return
+        # Bulk validate if multi-selected, otherwise single cursor row
+        if table._multi_selected:
+            txn_ids = list(table._multi_selected)
+        else:
+            row_key, _ = table.coordinate_to_cell_key(table.cursor_coordinate)
+            if not row_key:
+                return
+            key_val = str(row_key.value)
+            if key_val.startswith("__"):
+                return
+            txn_ids = [int(key_val)]
 
-        txn_id = int(row_key.value)
-        row = self.store.df[self.store.df["id"] == txn_id]
-        if row.empty:
-            return
+        count = 0
+        for txn_id in txn_ids:
+            row = self.store.df[self.store.df["id"] == txn_id]
+            if row.empty:
+                continue
+            row_data = row.iloc[0]
+            new_line = toggle_validated(row_data["raw_line"])
 
-        row = row.iloc[0]
-        new_line = toggle_validated(row["raw_line"])
+            if self._watcher:
+                file_path = self.store.transactions_dir / row_data["source_file"]
+                self._watcher.ignore_next_change(str(file_path))
 
-        if self._watcher:
-            file_path = self.store.transactions_dir / row["source_file"]
-            self._watcher.ignore_next_change(str(file_path))
+            update_transaction_in_file(
+                row_data["source_file"], row_data["line_number"], new_line
+            )
+            count += 1
 
-        update_transaction_in_file(
-            row["source_file"], row["line_number"], new_line
-        )
+        table._multi_selected.clear()
         self.store.load()
         self._refresh_all()
-        self.notify("Transaction validated", timeout=2)
+        label = f"{count} transaction{'s' if count > 1 else ''}"
+        self.notify(f"Validated {label}", timeout=2)
 
     def action_change_category_dialog(self):
         try:
@@ -427,6 +440,12 @@ class FinanceTUI(App):
             return
         row_data = row.iloc[0]
 
+        existing_tags = row_data.get("tags", [])
+        if not isinstance(existing_tags, list):
+            existing_tags = []
+        existing_links = row_data.get("links", [])
+        if not isinstance(existing_links, list):
+            existing_links = []
         new_line = serialize_transaction(
             validated=row_data["validated"],
             amount=event.changes.get("amount", row_data["amount"]),
@@ -435,6 +454,8 @@ class FinanceTUI(App):
             date_str=event.changes.get("date", row_data["date"].strftime("%Y-%m-%d")),
             account=event.changes.get("account", row_data["account"]),
             txn_id=event.txn_id,
+            tags=event.changes.get("tags", existing_tags),
+            links=event.changes.get("links", existing_links),
         )
 
         if self._watcher:
@@ -463,6 +484,8 @@ class FinanceTUI(App):
             date_str=values["date"],
             account=values["account"],
             txn_id=values["id"],
+            tags=values.get("tags", []),
+            links=values.get("links", []),
         )
 
         year = int(values["date"][:4])
@@ -529,6 +552,129 @@ class FinanceTUI(App):
         self._refresh_transactions_view()
         count = len(event.txn_ids)
         self.notify(f"Validated {count} transaction{'s' if count > 1 else ''}", timeout=2)
+
+    # --- Bulk tag/link modification ---
+    def bulk_modify_annotation(self, kind: str, action: str, name: str):
+        """Add or remove a tag/link on selected (or cursor) transactions.
+
+        kind: "tag" or "link"
+        action: "add" or "remove"
+        name: bare name (no # or [[]])
+        """
+        try:
+            table = self.query_one("#txn-table", TransactionTable)
+        except Exception:
+            return
+
+        if table._multi_selected:
+            txn_ids = list(table._multi_selected)
+        else:
+            try:
+                row_key, _ = table.coordinate_to_cell_key(table.cursor_coordinate)
+                key_val = str(row_key.value)
+                if key_val.startswith("__"):
+                    return
+                txn_ids = [int(key_val)]
+            except Exception:
+                return
+
+        field = "tags" if kind == "tag" else "links"
+        count = 0
+        for txn_id in txn_ids:
+            row = self.store.df[self.store.df["id"] == txn_id]
+            if row.empty:
+                continue
+            row_data = row.iloc[0]
+
+            existing_tags = list(row_data.get("tags", []) or [])
+            existing_links = list(row_data.get("links", []) or [])
+            target = existing_tags if kind == "tag" else existing_links
+
+            if action == "add":
+                if name in target:
+                    continue
+                target.append(name)
+            elif action == "remove":
+                if name not in target:
+                    continue
+                target.remove(name)
+
+            new_line = serialize_transaction(
+                validated=row_data["validated"],
+                amount=row_data["amount"],
+                category=row_data["category"],
+                description=row_data["description"],
+                date_str=row_data["date"].strftime("%Y-%m-%d"),
+                account=row_data["account"],
+                txn_id=txn_id,
+                tags=existing_tags,
+                links=existing_links,
+            )
+
+            if self._watcher:
+                file_path = self.store.transactions_dir / row_data["source_file"]
+                self._watcher.ignore_next_change(str(file_path))
+
+            update_transaction_in_file(
+                row_data["source_file"], row_data["line_number"], new_line
+            )
+            count += 1
+
+        table._multi_selected.clear()
+        self.store.load()
+        self._refresh_all()
+        if count:
+            symbol = f"#{name}" if kind == "tag" else f"[[{name}]]"
+            verb = "Added" if action == "add" else "Removed"
+            txn_label = f"{count} txn{'s' if count != 1 else ''}"
+            self.notify(f"{verb} {symbol} on {txn_label}", timeout=2)
+
+    # --- Bulk category change ---
+    def bulk_set_category(self, new_cat: str):
+        """Set category on selected (or cursor) transactions."""
+        try:
+            table = self.query_one("#txn-table", TransactionTable)
+        except Exception:
+            return
+
+        if table._multi_selected:
+            txn_ids = list(table._multi_selected)
+        else:
+            try:
+                row_key, _ = table.coordinate_to_cell_key(table.cursor_coordinate)
+                key_val = str(row_key.value)
+                if key_val.startswith("__"):
+                    return
+                txn_ids = [int(key_val)]
+            except Exception:
+                return
+
+        count = 0
+        for txn_id in txn_ids:
+            row = self.store.df[self.store.df["id"] == txn_id]
+            if row.empty:
+                continue
+            row_data = row.iloc[0]
+            if row_data["category"] == new_cat:
+                continue
+
+            new_line = change_category(row_data["raw_line"], new_cat)
+
+            if self._watcher:
+                file_path = self.store.transactions_dir / row_data["source_file"]
+                self._watcher.ignore_next_change(str(file_path))
+
+            update_transaction_in_file(
+                row_data["source_file"], row_data["line_number"], new_line
+            )
+            count += 1
+
+        table._multi_selected.clear()
+        self.store.load()
+        self._refresh_all()
+        if count:
+            txn_label = f"{count} txn{'s' if count != 1 else ''}"
+            self.notify(f"Set {txn_label} to {new_cat}", timeout=2)
 
     # --- Command palette custom actions ---
     def action_custom(self, action_str: str):

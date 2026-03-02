@@ -6,14 +6,25 @@ from textual.command import DiscoveryHit, Hit, Hits, Provider
 class FinanceCommandProvider(Provider):
     """Custom command palette provider with discovery and prefix drill-down."""
 
+    def _selection_count(self) -> int:
+        """Return the number of multi-selected transactions (0 if none)."""
+        try:
+            from finance_tui.widgets.transaction_table import TransactionTable
+            table = self.app.query_one("#txn-table", TransactionTable)
+            return len(table._multi_selected)
+        except Exception:
+            return 0
+
     async def discover(self) -> Hits:
         """Default suggestions shown before the user types anything."""
         app = self.app
         # Prefix drill-down items (intercepted by FinanceCommandPalette._select_command)
         _noop = lambda: None
         yield DiscoveryHit("Search", _noop, help="Free text search across transactions")
-        yield DiscoveryHit("Category", _noop, help="Filter transactions by category")
+        yield DiscoveryHit("Category", _noop, help="Filter by category, or bulk set on selection")
         yield DiscoveryHit("Account", _noop, help="Filter transactions by account")
+        yield DiscoveryHit("Tag", _noop, help="Bulk add/remove tags on selected transactions")
+        yield DiscoveryHit("Link", _noop, help="Bulk add/remove links on selected transactions")
         yield DiscoveryHit("Period", _noop, help="Change the active time period")
         # Direct actions
         yield DiscoveryHit(
@@ -33,14 +44,25 @@ class FinanceCommandProvider(Provider):
                 categories = list(app.store.categories.keys())
             except Exception:
                 categories = []
+            sel = self._selection_count()
             for cat in categories:
                 if fragment in cat.lower():
-                    yield Hit(
-                        1.0 - (len(fragment) / max(len(cat), 1)),
-                        f"cat:{cat}",
-                        lambda c=cat: app.apply_search_filter(f"cat:{c}"),
-                        help=f"Show only {cat} transactions",
-                    )
+                    score = 1.0 - (len(fragment) / max(len(cat), 1))
+                    if sel:
+                        label = f"{sel} selected txn{'s' if sel != 1 else ''}"
+                        yield Hit(
+                            score,
+                            f"Set {label} to {cat}",
+                            lambda c=cat: app.bulk_set_category(c),
+                            help=f"Change category to {cat}",
+                        )
+                    else:
+                        yield Hit(
+                            score,
+                            f"cat:{cat}",
+                            lambda c=cat: app.apply_search_filter(f"cat:{c}"),
+                            help=f"Show only {cat} transactions",
+                        )
             return
 
         # ── Prefix drill-down: acc: ────────────────────────
@@ -58,6 +80,46 @@ class FinanceCommandProvider(Provider):
                         lambda a=acc: app.apply_search_filter(f"acc:{a}"),
                         help=f"Show only {acc} transactions",
                     )
+            return
+
+        # ── Prefix drill-down: tag: ──────────────────────
+        if q.startswith("tag:"):
+            name = query.strip()[4:].strip()
+            if name:
+                sel = self._selection_count()
+                label = f"{sel} selected txn{'s' if sel != 1 else ''}" if sel else "cursor txn"
+                yield Hit(
+                    1.0,
+                    f"Add #{name} to {label}",
+                    lambda n=name: app.bulk_modify_annotation("tag", "add", n),
+                    help=f"Add tag #{name}",
+                )
+                yield Hit(
+                    0.9,
+                    f"Remove #{name} from {label}",
+                    lambda n=name: app.bulk_modify_annotation("tag", "remove", n),
+                    help=f"Remove tag #{name}",
+                )
+            return
+
+        # ── Prefix drill-down: link: ─────────────────────
+        if q.startswith("link:"):
+            name = query.strip()[5:].strip()
+            if name:
+                sel = self._selection_count()
+                label = f"{sel} selected txn{'s' if sel != 1 else ''}" if sel else "cursor txn"
+                yield Hit(
+                    1.0,
+                    f"Add [[{name}]] to {label}",
+                    lambda n=name: app.bulk_modify_annotation("link", "add", n),
+                    help=f"Add link [[{name}]]",
+                )
+                yield Hit(
+                    0.9,
+                    f"Remove [[{name}]] from {label}",
+                    lambda n=name: app.bulk_modify_annotation("link", "remove", n),
+                    help=f"Remove link [[{name}]]",
+                )
             return
 
         # ── Prefix drill-down: period: ─────────────────────

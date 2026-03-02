@@ -2,28 +2,22 @@
 
 from rich.text import Text
 from textual import work
-from textual.app import ComposeResult
 from textual.message import Message
-from textual.widgets import Static
 
-from finance_tui.widgets.scroll_arrows import ScrollablePanel
+from finance_tui.widgets.panel_table import PanelTable
 
 _ICONS = {
-    "budget_over": "◆",
-    "budget_warning": "◆",
     "outlier": "◆",
-    "duplicate": "◆",
+    "duplicate": "⊘",
 }
 
 _COLORS = {
-    "budget_over": "#E8871E",
-    "budget_warning": "#E8871E",
     "outlier": "#E8871E",
     "duplicate": "#E8871E",
 }
 
 
-class AlertsPanel(ScrollablePanel):
+class AlertsPanel(PanelTable):
     """Alerts panel with multi-select (Space) and validate (v)."""
 
     class ValidateAlerts(Message):
@@ -48,13 +42,13 @@ class AlertsPanel(ScrollablePanel):
         self._multi_selected: set[int] = set()
         self.border_title = "Alerts"
 
-    def compose(self) -> ComposeResult:
-        self._filters = []
-        yield Static("Loading...", id="alerts-content", classes="bar-row")
-
-    def on_mount(self):
-        super().on_mount()
+    def on_mount(self) -> None:
+        self._show_loading()
         self._load_alerts()
+
+    def _show_loading(self) -> None:
+        line = Text("Loading...", style="#555555")
+        self._load_rows([(line, "")])
 
     # ── rendering ────────────────────────────────────────────
 
@@ -78,36 +72,28 @@ class AlertsPanel(ScrollablePanel):
         insights = get_all_insights(df, self._store.categories)
 
         def _render():
-            try:
-                content = self.query_one("#alerts-content", Static)
-            except Exception:
-                return
-
-            if not insights:
-                self._items = []
-                self._filters = [""]
-                self._multi_selected.clear()
-                line = Text()
-                line.append(" No alerts ", style="#555555")
-                line.append("— finances look good", style="#3A3A3A")
-                content.update(line)
-                return
-
-            content.remove()
             self._items = []
             self._filters = []
             self._multi_selected.clear()
 
+            if not insights:
+                line = Text()
+                line.append(" No alerts ", style="#555555")
+                line.append("— finances look good", style="#3A3A3A")
+                self._load_rows([(line, "")])
+                return
+
+            rows: list[tuple[Text, str]] = []
             for item in insights[:15]:
                 self._items.append(item)
-                self.mount(Static(self._render_alert_text(item), classes="bar-row"))
+                text = self._render_alert_text(item)
 
-                if item["type"] in ("budget_over", "budget_warning"):
-                    cat = item.get("category", "")
-                    self._filters.append(f"cat:{cat} <0" if cat else "")
-                else:
-                    desc = item.get("description", item.get("message", ""))
-                    self._filters.append(desc[:40] if desc else "")
+                desc = item.get("description", item.get("message", ""))
+                filt = desc[:40] if desc else ""
+
+                rows.append((text, filt))
+
+            self._load_rows(rows)
 
         # Build alert map: txn_id → alert_type
         alert_map: dict[int, str] = {}
@@ -124,33 +110,28 @@ class AlertsPanel(ScrollablePanel):
 
     # ── multi-select ─────────────────────────────────────────
 
-    def key_space(self):
+    def key_space(self) -> None:
         """Toggle multi-selection on the current row."""
-        if self._selected_index < 0 or self._selected_index >= len(self._items):
+        idx = self.cursor_row
+        if idx < 0 or idx >= len(self._items):
             return
-        idx = self._selected_index
         if idx in self._multi_selected:
             self._multi_selected.discard(idx)
         else:
             self._multi_selected.add(idx)
-        self._update_row_visual(idx)
-
-    def _update_row_visual(self, idx: int):
-        """Re-render a single row to reflect its selection state."""
-        rows = self._get_row_widgets()
-        if idx < 0 or idx >= len(rows) or idx >= len(self._items):
-            return
+        # Re-render the row in place
         selected = idx in self._multi_selected
-        rows[idx].update(self._render_alert_text(self._items[idx], selected))
+        text = self._render_alert_text(self._items[idx], selected)
+        self.update_cell_at((idx, 0), text)
 
     # ── validate ─────────────────────────────────────────────
 
-    def key_v(self):
+    def key_v(self) -> None:
         """Validate selected alerts (or current row if none selected)."""
         if self._multi_selected:
             indices = set(self._multi_selected)
-        elif self._selected_index >= 0:
-            indices = {self._selected_index}
+        elif self.cursor_row >= 0:
+            indices = {self.cursor_row}
         else:
             return
 
@@ -166,12 +147,13 @@ class AlertsPanel(ScrollablePanel):
 
         self._remove_alerts(indices)
 
-    def _remove_alerts(self, indices: set[int]):
+    def _remove_alerts(self, indices: set[int]) -> None:
         """Remove alerts at given indices from the panel."""
-        rows = self._get_row_widgets()
+        # Get row keys before removing anything
+        row_keys = list(self.rows.keys())
         for idx in sorted(indices, reverse=True):
-            if idx < len(rows):
-                rows[idx].remove()
+            if idx < len(row_keys):
+                self.remove_row(row_keys[idx])
             if idx < len(self._items):
                 self._items.pop(idx)
             if idx < len(self._filters):
@@ -179,15 +161,11 @@ class AlertsPanel(ScrollablePanel):
 
         self._multi_selected.clear()
 
-        if self._selected_index >= len(self._items):
-            self._selected_index = max(0, len(self._items) - 1)
         if not self._items:
-            self._selected_index = -1
-            self.mount(Static(
-                Text(" No alerts ", style="#555555"),
-                classes="bar-row",
-            ))
-        self._update_selection()
+            line = Text()
+            line.append(" No alerts ", style="#555555")
+            line.append("— finances look good", style="#3A3A3A")
+            self._load_rows([(line, "")])
 
     # ── refresh ──────────────────────────────────────────────
 
@@ -198,7 +176,5 @@ class AlertsPanel(ScrollablePanel):
         else:
             self._df = df_or_store
         self._multi_selected.clear()
-        self.remove_children()
-        for w in self.compose():
-            self.mount(w)
+        self._show_loading()
         self._load_alerts()

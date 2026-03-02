@@ -15,13 +15,23 @@ def serialize_transaction(
     date_str: str,
     account: str,
     txn_id: int,
+    tags: list[str] | None = None,
+    links: list[str] | None = None,
 ) -> str:
     """Serialize a transaction to the Obsidian markdown format."""
     check = "x" if validated else " "
-    return (
+    line = (
         f"- [{check}] `{amount:.2f}` [[{category}]] "
         f"{description} ➕ {date_str} [[{account}]] 🆔 {txn_id}"
     )
+    parts = []
+    if tags:
+        parts.extend(f"#{t}" for t in tags)
+    if links:
+        parts.extend(f"[[{l}]]" for l in links)
+    if parts:
+        line += " " + ", ".join(parts)
+    return line
 
 
 def toggle_validated(line: str) -> str:

@@ -17,7 +17,8 @@ TRANSACTION_RE = re.compile(
     r" (.+?)"                  # description (non-greedy)
     r" ➕ (\d{4}-\d{2}-\d{2})" # date
     r" \[\[(\w+_\d+)\]\]"     # account in wikilinks
-    r" 🆔 (\d+)$"              # id
+    r" 🆔 (\d+)"               # id
+    r"(?: (.+))?$"             # optional tags after id
 )
 
 # Extract [[Person]] wikilinks from description
@@ -27,6 +28,28 @@ WIKILINK_RE = re.compile(r"\[\[(\w+)\]\]")
 BIZUM_FROM_RE = re.compile(r"Bizum (?:payment from:|<) (.+)")
 BIZUM_TO_RE = re.compile(r"Bizum > (.+)")
 TRANSFER_TO_RE = re.compile(r"To (.+)")
+
+
+def _parse_annotations(raw: str | None) -> tuple[list[str], list[str]]:
+    """Parse comma-separated #tag and [[wikilink]] entries into separate lists.
+
+    Returns (tags, links) where tags are stored without '#' and links without '[[]]'.
+    """
+    tags: list[str] = []
+    links: list[str] = []
+    if not raw:
+        return tags, links
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if item.startswith("[[") and item.endswith("]]"):
+            links.append(item[2:-2])
+        elif item.startswith("#"):
+            tags.append(item[1:])
+        else:
+            tags.append(item)
+    return tags, links
 
 
 def _extract_people(description: str) -> list[str]:
@@ -73,8 +96,9 @@ def parse_transaction(line: str, source_file: str, line_number: int) -> Transact
     if not m:
         return None
 
-    validated_str, amount_str, category, description, date_str, account, id_str = m.groups()
+    validated_str, amount_str, category, description, date_str, account, id_str, annotations_raw = m.groups()
     year, month, day = date_str.split("-")
+    tags, links = _parse_annotations(annotations_raw)
 
     return Transaction(
         id=int(id_str),
@@ -88,6 +112,8 @@ def parse_transaction(line: str, source_file: str, line_number: int) -> Transact
         line_number=line_number,
         raw_line=line,
         people=_extract_people(description),
+        tags=tags,
+        links=links,
     )
 
 
