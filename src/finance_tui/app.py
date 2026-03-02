@@ -60,7 +60,7 @@ class FinanceTUI(App):
     COMMAND_PALETTE_BINDING = "ctrl+k"
 
     BINDINGS = [
-        ("o", "switch_tab('overview')", "Overview"),
+        ("h", "switch_tab('home')", "Home"),
         ("t", "switch_tab('transactions')", "Txns"),
         Binding("1", "focus_panel('panel-1')", "Panel 1", show=False),
         Binding("2", "focus_panel('panel-2')", "Panel 2", show=False),
@@ -97,7 +97,7 @@ class FinanceTUI(App):
             yield Static("", id="active-filters")
             yield PeriodSelector(id="period")
         with TabbedContent(id="main-tabs"):
-            with TabPane("Overview", id="overview"):
+            with TabPane("Home", id="home"):
                 yield OverviewPane(self.store)
             with TabPane("Transactions", id="transactions"):
                 yield TransactionsPane(self.store)
@@ -139,8 +139,8 @@ class FinanceTUI(App):
 
     # --- Panel focus ---
     def action_focus_panel(self, panel_id: str):
-        """Focus a numbered panel in the overview tab."""
-        self.action_switch_tab("overview")
+        """Focus a numbered panel in the home tab."""
+        self.action_switch_tab("home")
         try:
             panel = self.query_one(f"#{panel_id}")
             panel.focus()
