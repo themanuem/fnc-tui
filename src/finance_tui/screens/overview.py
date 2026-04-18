@@ -36,12 +36,12 @@ def _kpi_with_rate(main: str, sentiment: str, rate: float | None) -> Text:
 class OverviewPane(Container):
     """Overview tab: compact KPIs, charts, accounts, budgets."""
 
-    def __init__(self, store, **kwargs):
+    def __init__(self, store=None, **kwargs):
         super().__init__(**kwargs)
         self.store = store
 
     def compose(self) -> ComposeResult:
-        df = self.store.df
+        df = self.store.df if self.store else pd.DataFrame()
         period = analytics.fiscal_period()
 
         balance = analytics.global_balance(df)
@@ -107,7 +107,8 @@ class OverviewPane(Container):
             inc = IncomeCategoryPanel(df, classes="third", id="panel-5")
             inc.border_title = "5·Income by Category"
             yield inc
-            bud = BudgetPanel(df, self.store.categories, classes="third", id="panel-6")
+            cats = self.store.categories if self.store else {}
+            bud = BudgetPanel(df, cats, classes="third", id="panel-6")
             bud.border_title = "6·Months Over Budget"
             yield bud
 
@@ -162,8 +163,14 @@ class OverviewPane(Container):
             self.query_one("#panel-3", EvolutionChart).refresh_data(df)
             self.query_one("#panel-4", ExpenseCategoryPanel).refresh_data(df)
             self.query_one("#panel-5", IncomeCategoryPanel).refresh_data(df)
-            self.query_one("#panel-6", BudgetPanel).refresh_data(df)
-            self.query_one("#panel-7", AlertsPanel).refresh_data(df)
+            budget = self.query_one("#panel-6", BudgetPanel)
+            if self.store:
+                budget._categories = self.store.categories
+            budget.refresh_data(df)
+            alerts = self.query_one("#panel-7", AlertsPanel)
+            if self.store:
+                alerts._store = self.store
+            alerts.refresh_data(df)
             self.query_one("#panel-8", AnnotationsPanel).refresh_data(df)
         except Exception:
             pass

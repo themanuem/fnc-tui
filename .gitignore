@@ -8,3 +8,16 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Environment files (keep .env.example)
+.env
+.env.local
+
+# OS files
+.DS_Store
+
+# Claude Code
+.claude/
+
+# Thoughts (local plans/research)
+thoughts/

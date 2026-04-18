@@ -18,6 +18,70 @@ Screen {
     layers: default overlay;
 }
 
+Widget {
+    scrollbar-size-vertical: 1;
+    scrollbar-size-horizontal: 1;
+    scrollbar-color: $accent-dim;
+    scrollbar-color-hover: $accent;
+    scrollbar-color-active: $accent;
+    scrollbar-background: $bg-panel;
+    scrollbar-background-hover: $bg-panel;
+    scrollbar-background-active: $bg-panel;
+    scrollbar-corner-color: $bg-panel;
+}
+
+Button {
+    background: $bg-panel;
+    color: $text-normal;
+    border: tall $border-color;
+    height: 3;
+}
+
+Button:hover {
+    background: #333333;
+}
+
+Button.-primary {
+    background: $accent;
+    color: #111111;
+    border: tall $accent-dim;
+}
+
+Button.-primary:hover {
+    background: $accent-dim;
+}
+
+Button.-error {
+    background: $negative;
+    color: #111111;
+    border: tall #A04040;
+}
+
+Select:focus > SelectCurrent {
+    border: tall $accent;
+}
+
+SelectCurrent {
+    border: tall $border-color;
+}
+
+Select > SelectOverlay {
+    border: tall $accent;
+}
+
+OptionList:focus {
+    border: tall $accent;
+}
+
+OptionList > .option-list--option-highlighted {
+    background: $accent;
+    color: #111111;
+}
+
+Input:focus {
+    border: tall $accent;
+}
+
 /* ── Footer ── */
 
 Footer {
@@ -175,12 +239,6 @@ KpiCard .kpi-neutral {
 /* ── Panel tables (DataTable-based overview panels) ── */
 
 PanelTable {
-    scrollbar-size-vertical: 1;
-    scrollbar-size-horizontal: 1;
-    scrollbar-color: $border-dim;
-    scrollbar-color-hover: $border-color;
-    scrollbar-color-active: $accent;
-    scrollbar-background: $bg-panel;
 }
 
 PanelTable:focus {
@@ -296,14 +354,6 @@ TransactionTable {
     background: $bg-panel;
     border: round $border-color;
     padding-bottom: 1;
-    scrollbar-color: $border-dim;
-    scrollbar-color-hover: $border-color;
-    scrollbar-color-active: $accent;
-    scrollbar-background: $bg-surface;
-    scrollbar-background-hover: $bg-surface;
-    scrollbar-background-active: $bg-surface;
-    scrollbar-corner-color: $bg-surface;
-    scrollbar-size-vertical: 1;
 }
 
 DataTable > .datatable--header {
@@ -380,11 +430,6 @@ CommandPalette #--results {
 CommandPalette CommandList {
     background: $bg-panel;
     border: none;
-    scrollbar-color: $border-dim;
-    scrollbar-color-hover: $border-color;
-    scrollbar-color-active: $accent;
-    scrollbar-background: $bg-panel;
-    scrollbar-size-vertical: 1;
 }
 
 /* Each result row */
@@ -457,6 +502,314 @@ CategoryChangeDialog {
 }
 
 #dialog-buttons Button {
+    width: 1fr;
+    margin: 0 1;
+}
+
+/* ── Onboarding ── */
+
+OnboardingScreen {
+    align: center middle;
+    background: $bg-surface;
+}
+
+#onboarding-container {
+    width: 60;
+    height: auto;
+    max-height: 20;
+    border: round $accent;
+    background: $bg-panel;
+    padding: 1 2;
+}
+
+#onboarding-title {
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 1;
+}
+
+#onboarding-container Static {
+    margin: 0 0 1 0;
+    color: $text-normal;
+}
+
+#onboarding-container Label {
+    margin: 0;
+    color: $text-normal;
+}
+
+#onboarding-container Input {
+    margin: 0 0 1 0;
+}
+
+#onboarding-path-row {
+    height: auto;
+    layout: horizontal;
+    margin: 0 0 1 0;
+}
+
+#onboarding-path-row Input {
+    width: 1fr;
+    margin: 0;
+    scrollbar-size-horizontal: 0;
+}
+
+#onboarding-path-row Button {
+    width: auto;
+    min-width: 12;
+    margin: 0 0 0 1;
+}
+
+#onboarding-error {
+    height: auto;
+    margin: 0;
+}
+
+#onboarding-continue {
+    margin-top: 1;
+}
+
+/* ── Import Wizard ── */
+
+ImportWizard {
+    align: center middle;
+}
+
+#wizard-container {
+    width: 70;
+    height: auto;
+    max-height: 32;
+    border: round $accent;
+    background: $bg-panel;
+    padding: 1 2;
+}
+
+#wizard-title {
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 1;
+}
+
+#wizard-error {
+    height: auto;
+    margin: 0;
+}
+
+#wizard-container Label {
+    margin: 0;
+    color: $text-normal;
+}
+
+#wizard-container Input {
+    margin: 0 0 1 0;
+}
+
+#wizard-container Select {
+    margin: 0 0 1 0;
+}
+
+#wizard-step-2, #wizard-step-3 {
+    display: none;
+}
+
+#wizard-preview-table {
+    height: auto;
+    max-height: 14;
+    margin: 1 0;
+}
+
+#wizard-preview-stats {
+    color: $text-normal;
+    margin: 0;
+}
+
+#wizard-dupe-warning {
+    margin: 0;
+}
+
+#wizard-buttons {
+    layout: horizontal;
+    height: auto;
+    margin-top: 1;
+}
+
+#wizard-buttons Button {
+    width: 1fr;
+    margin: 0 1;
+}
+
+/* ── File Browser Dialog ── */
+
+FileBrowserDialog {
+    align: center middle;
+}
+
+#file-browser-container {
+    width: 70;
+    height: 28;
+    border: round $accent;
+    background: $bg-panel;
+    padding: 1 2;
+}
+
+#file-browser-title {
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 1;
+}
+
+#file-browser-path {
+    height: 1;
+    margin: 0 0 1 0;
+    color: $text-dim;
+}
+
+#file-browser-tree {
+    height: 1fr;
+    background: $bg-surface;
+    border: round $border-color;
+    margin: 0 0 1 0;
+}
+
+#file-browser-tree:focus {
+    border: round $accent;
+}
+
+FilteredDirectoryTree > .directory-tree--folder {
+    color: $accent;
+    text-style: bold;
+}
+
+FilteredDirectoryTree > .directory-tree--file {
+    color: $text-normal;
+}
+
+FilteredDirectoryTree > .directory-tree--extension {
+    color: $text-dim;
+}
+
+FilteredDirectoryTree > .tree--cursor {
+    background: #2A2A2A;
+}
+
+FilteredDirectoryTree > .tree--guides {
+    color: $border-dim;
+}
+
+#file-browser-buttons {
+    layout: horizontal;
+    height: auto;
+}
+
+#file-browser-buttons Button {
+    width: 1fr;
+    margin: 0 1;
+}
+
+/* wizard file row */
+
+#wizard-file-row {
+    height: auto;
+    layout: horizontal;
+    margin: 0 0 1 0;
+}
+
+#wizard-file-row Input {
+    width: 1fr;
+    margin: 0;
+    scrollbar-size-horizontal: 0;
+}
+
+#wizard-file-row Button {
+    width: auto;
+    min-width: 12;
+    margin: 0 0 0 1;
+}
+
+/* ── Category List Dialog ── */
+
+CategoryListDialog {
+    align: center middle;
+}
+
+#cat-list-container {
+    width: 60;
+    height: auto;
+    max-height: 28;
+    border: round $accent;
+    background: $bg-panel;
+    padding: 1 2;
+}
+
+#cat-list-title {
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 1;
+}
+
+#cat-list-table {
+    height: auto;
+    max-height: 18;
+    margin: 0 0 1 0;
+}
+
+#cat-list-buttons {
+    layout: horizontal;
+    height: auto;
+    margin-top: 1;
+}
+
+#cat-list-buttons Button {
+    width: 1fr;
+    margin: 0 1;
+}
+
+/* ── Category Edit Dialog ── */
+
+CategoryEditDialog {
+    align: center middle;
+}
+
+#cat-edit-container {
+    width: 50;
+    height: auto;
+    max-height: 22;
+    border: round $accent;
+    background: $bg-panel;
+    padding: 1 2;
+}
+
+#cat-edit-title {
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 1;
+}
+
+#cat-edit-error {
+    height: auto;
+    margin: 0;
+}
+
+#cat-edit-container Label {
+    margin: 0;
+    color: $text-normal;
+}
+
+#cat-edit-container Input {
+    margin: 0 0 1 0;
+}
+
+#cat-edit-container Checkbox {
+    margin: 0 0 1 0;
+}
+
+#cat-edit-buttons {
+    layout: horizontal;
+    height: auto;
+    margin-top: 1;
+}
+
+#cat-edit-buttons Button {
     width: 1fr;
     margin: 0 1;
 }

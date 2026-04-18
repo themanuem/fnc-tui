@@ -1,0 +1,7 @@
+{
+  "account": "BBVA",
+  "transactions": [
+    {"date": "2026-01-15", "desc": "Grocery", "value": -45.20},
+    {"date": "2026-01-16", "desc": "Salary", "value": 2100.00}
+  ]
+}

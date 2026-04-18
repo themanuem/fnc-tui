@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from finance_tui.config import ACCOUNTS_DIR, CATEGORIES_DIR, TRANSACTIONS_DIR
+from finance_tui import config as cfg
 from finance_tui.parser import parse_all_accounts, parse_all_categories, parse_all_transactions
 
 
@@ -13,13 +13,13 @@ class FinanceStore:
 
     def __init__(
         self,
-        transactions_dir: Path = TRANSACTIONS_DIR,
-        categories_dir: Path = CATEGORIES_DIR,
-        accounts_dir: Path = ACCOUNTS_DIR,
+        transactions_dir: Path | None = None,
+        categories_dir: Path | None = None,
+        accounts_dir: Path | None = None,
     ):
-        self.transactions_dir = transactions_dir
-        self.categories_dir = categories_dir
-        self.accounts_dir = accounts_dir
+        self.transactions_dir = transactions_dir or cfg.TRANSACTIONS_DIR
+        self.categories_dir = categories_dir or cfg.CATEGORIES_DIR
+        self.accounts_dir = accounts_dir or cfg.ACCOUNTS_DIR
         self.df = pd.DataFrame()
         self.categories: dict[str, dict] = {}
         self.accounts: dict[str, dict] = {}

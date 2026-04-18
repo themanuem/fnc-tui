@@ -43,6 +43,8 @@ class AlertsPanel(PanelTable):
         self.border_title = "Alerts"
 
     def on_mount(self) -> None:
+        if not self._store:
+            return
         self._show_loading()
         self._load_alerts()
 

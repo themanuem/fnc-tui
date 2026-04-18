@@ -17,9 +17,14 @@ class TransactionsPane(Container):
 
     def compose(self) -> ComposeResult:
         yield TransactionTable(id="txn-table")
-        yield Static(self._status_text(len(self.store.df)), id="txn-status")
+        count = len(self.store.df) if self.store else 0
+        yield Static(self._status_text(count), id="txn-status")
 
     def on_mount(self):
+        if self.store:
+            self._load_from_store()
+
+    def _load_from_store(self):
         table = self.query_one("#txn-table", TransactionTable)
         table.set_enums(
             categories=list(self.store.categories.keys()),
@@ -28,6 +33,8 @@ class TransactionsPane(Container):
         table.load_data(self.store.df)
 
     def _status_text(self, count: int) -> str:
+        if not self.store:
+            return ""
         total = len(self.store.df)
         if count == total:
             return f"{count:,} transactions | Balance: {self.store.global_balance:,.2f} {CURRENCY}"

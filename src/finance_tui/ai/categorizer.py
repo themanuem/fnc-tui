@@ -6,30 +6,20 @@ import os
 
 from finance_tui.ai.cache import cache_get, cache_set
 
-CATEGORIES_PROMPT = """You are a financial transaction categorizer. Given transaction descriptions, suggest the most likely category.
+CATEGORIES_PROMPT_TEMPLATE = """You are a financial transaction categorizer. Given transaction descriptions, suggest the most likely category.
 
 Available categories:
-- Food: Restaurants, groceries, cafes, food delivery
-- Transportation: Gas, parking, uber, taxis, flights, trains, tolls
-- Shopping: Clothing, electronics, gifts, online shopping
-- Entertainment: Movies, concerts, sports, games, events
-- Subscriptions: Recurring charges (Netflix, Spotify, software)
-- Housing: Rent, hotels, accommodation, booking
-- Wellbeing: Pharmacy, gym, haircut, spa, health
-- Education: Courses, learning platforms, books
-- Charity: Donations
-- Savings: Savings transfers
-- Investments: Investment transfers
-- Sales: Income, salary, payments received
-- Taxes: Government fees, fines
-- Other: Transfers, fees, refunds, miscellaneous
-- Passive: Passive income
-- Debt: Debt payments
+{categories}
 
 For each transaction, respond with a JSON array of objects:
-[{"description": "...", "category": "...", "confidence": 0.0-1.0}]
+[{{"description": "...", "category": "...", "confidence": 0.0-1.0}}]
 
 Only use categories from the list above. Be concise."""
+
+
+def _build_prompt(categories: list[str]) -> str:
+    cat_list = "\n".join(f"- {c}" for c in categories)
+    return CATEGORIES_PROMPT_TEMPLATE.format(categories=cat_list)
 
 
 async def categorize_transactions(
@@ -72,12 +62,13 @@ async def categorize_transactions(
         client = AsyncAnthropic()
         batch_text = "\n".join(f"- {d}" for d in uncached)
 
+        prompt = _build_prompt(categories)
         response = await client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=1024,
             messages=[{
                 "role": "user",
-                "content": f"{CATEGORIES_PROMPT}\n\nTransactions:\n{batch_text}",
+                "content": f"{prompt}\n\nTransactions:\n{batch_text}",
             }],
         )
 

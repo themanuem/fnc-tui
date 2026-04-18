@@ -28,6 +28,16 @@ class FinanceCommandProvider(Provider):
         yield DiscoveryHit("Period", _noop, help="Change the active time period")
         # Direct actions
         yield DiscoveryHit(
+            "Import",
+            lambda: app.action_import_wizard(),
+            help="Import transactions from CSV, JSON, XLSX, or MD file",
+        )
+        yield DiscoveryHit(
+            "Categories",
+            lambda: app.action_manage_categories(),
+            help="Create, edit, rename, or delete categories and budgets",
+        )
+        yield DiscoveryHit(
             "Clear Filters",
             lambda: app.action_clear_filters(),
             help="Remove all active filters",

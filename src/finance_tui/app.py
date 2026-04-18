@@ -12,9 +12,11 @@ from textual.widgets import Footer, Static, Tab, TabbedContent, TabPane
 from finance_tui.widgets.filter_bar import FilterBar
 
 from finance_tui.commands import FinanceCommandProvider
-from finance_tui.config import FINANCE_DIR
+from finance_tui import config as cfg
 from finance_tui.widgets.command_palette import FinanceCommandPalette
 from finance_tui.screens.dialogs import CategoryChangeDialog
+from finance_tui.screens.category_editor import CategoryListDialog
+from finance_tui.screens.import_wizard import ImportWizard
 from finance_tui.screens.overview import OverviewPane
 from finance_tui.screens.transactions import TransactionsPane
 from finance_tui.store import FinanceStore
@@ -78,6 +80,7 @@ class FinanceTUI(App):
         Binding("v", "validate_transaction", "Validate", show=False),
         Binding("c", "change_category_dialog", "Cat", show=False),
         Binding("f", "focus_filters", "Filters", show=False),
+        Binding("g", "manage_categories", "Categories", show=False),
         ("r", "reload_data", "Reload"),
         ("escape", "clear_filters", "Clear"),
         ("q", "quit", "Quit"),
@@ -86,7 +89,7 @@ class FinanceTUI(App):
     def __init__(self):
         super().__init__()
         self.animation_level = "none"
-        self.store = FinanceStore()
+        self.store: FinanceStore | None = None
         self._watcher: FileWatcher | None = None
         self._period_start = None
         self._period_end = None
@@ -102,14 +105,37 @@ class FinanceTUI(App):
             yield PeriodSelector(id="period")
         with TabbedContent(id="main-tabs"):
             with TabPane("Home", id="home"):
-                yield OverviewPane(self.store)
+                yield OverviewPane(None)
             with TabPane("Transactions", id="transactions"):
-                yield TransactionsPane(self.store)
+                yield TransactionsPane(None)
         yield Footer()
 
     def on_mount(self):
-        self._watcher = FileWatcher(FINANCE_DIR, self)
+        if cfg.is_configured():
+            self._boot_with_data()
+        else:
+            from finance_tui.screens.onboarding import OnboardingScreen
+            self.push_screen(OnboardingScreen(), self._on_onboarding_complete)
+
+    def _on_onboarding_complete(self, result: Path | None) -> None:
+        if result and cfg.is_configured():
+            self._boot_with_data()
+
+    def _boot_with_data(self) -> None:
+        if not cfg.FINANCE_DIR:
+            cfg.load_config()
+        self.store = FinanceStore()
+        overview = self.query_one("OverviewPane", OverviewPane)
+        overview.store = self.store
+        try:
+            overview.query_one("#panel-7", AlertsPanel)._store = self.store
+        except Exception:
+            pass
+        txn_pane = self.query_one("TransactionsPane", TransactionsPane)
+        txn_pane.store = self.store
+        self._watcher = FileWatcher(cfg.FINANCE_DIR, self)
         self._watcher.start()
+        self._refresh_all()
 
     def on_unmount(self):
         if self._watcher:
@@ -309,6 +335,8 @@ class FinanceTUI(App):
 
     def _refresh_all(self):
         """Refresh both overview and transactions with the current period filter."""
+        if not self.store:
+            return
         filtered = self._get_filtered_df()
         self._refresh_transactions_view(filtered)
         self._refresh_overview(filtered)
@@ -342,11 +370,15 @@ class FinanceTUI(App):
     # --- Data reload ---
     @on(DataChanged)
     def _on_data_changed(self, event: DataChanged):
+        if not self.store:
+            return
         self.store.load()
         self._refresh_all()
         self.notify("Data reloaded", timeout=2)
 
     def action_reload_data(self):
+        if not self.store:
+            return
         self.store.load()
         self._refresh_all()
         self.notify("Data reloaded", timeout=2)
@@ -431,6 +463,15 @@ class FinanceTUI(App):
             CategoryChangeDialog(categories, row_data["category"]),
             callback=on_dismiss,
         )
+
+    def action_import_wizard(self):
+        """Open the import wizard modal."""
+        accounts = list(self.store.accounts.keys())
+        self.push_screen(ImportWizard(accounts))
+
+    def action_manage_categories(self):
+        """Open the category management dialog."""
+        self.push_screen(CategoryListDialog(dict(self.store.categories)))
 
     # --- Inline editing ---
     @on(TransactionTable.TransactionEdited)

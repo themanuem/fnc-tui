@@ -53,6 +53,8 @@ def fiscal_period(ref: date | None = None) -> str:
 
 def month_total(df: pd.DataFrame, month: str) -> float:
     """Net total for a given month (YYYY-MM format)."""
+    if df.empty:
+        return 0.0
     mask = df["month"] == month
     return round(df.loc[mask, "amount"].sum(), 2)
 
@@ -86,6 +88,8 @@ def net_growth_mom_rate(df: pd.DataFrame) -> float | None:
 
 def income_total(df: pd.DataFrame, month: str | None = None) -> float:
     """Total income, optionally filtered by month."""
+    if df.empty:
+        return 0.0
     filtered = df[df["is_income"]]
     if month:
         filtered = filtered[filtered["month"] == month]
@@ -94,6 +98,8 @@ def income_total(df: pd.DataFrame, month: str | None = None) -> float:
 
 def expense_total(df: pd.DataFrame, month: str | None = None) -> float:
     """Total expenses, optionally filtered by month."""
+    if df.empty:
+        return 0.0
     filtered = df[df["is_expense"]]
     if month:
         filtered = filtered[filtered["month"] == month]
@@ -102,6 +108,8 @@ def expense_total(df: pd.DataFrame, month: str | None = None) -> float:
 
 def income_by_category(df: pd.DataFrame, month: str | None = None) -> dict[str, float]:
     """Income grouped by category."""
+    if df.empty:
+        return {}
     filtered = df[df["is_income"]]
     if month:
         filtered = filtered[filtered["month"] == month]
@@ -110,6 +118,8 @@ def income_by_category(df: pd.DataFrame, month: str | None = None) -> dict[str, 
 
 def expenses_by_category(df: pd.DataFrame, month: str | None = None) -> dict[str, float]:
     """Expenses grouped by category (values are negative)."""
+    if df.empty:
+        return {}
     filtered = df[df["is_expense"]]
     if month:
         filtered = filtered[filtered["month"] == month]
@@ -118,16 +128,22 @@ def expenses_by_category(df: pd.DataFrame, month: str | None = None) -> dict[str
 
 def balance_by_account(df: pd.DataFrame) -> dict[str, float]:
     """Balance per account."""
+    if df.empty:
+        return {}
     return df.groupby("account")["amount"].sum().round(2).to_dict()
 
 
 def count_by_account(df: pd.DataFrame) -> dict[str, int]:
     """Transaction count per account."""
+    if df.empty:
+        return {}
     return df.groupby("account").size().to_dict()
 
 
 def monthly_totals(df: pd.DataFrame) -> pd.DataFrame:
     """Monthly net totals as a DataFrame with month and total columns."""
+    if df.empty:
+        return pd.DataFrame(columns=["month", "total"])
     return (
         df.groupby("month")["amount"]
         .sum()
@@ -193,6 +209,8 @@ def months_over_budget(
 
     Spend = sum of amounts < 0 (expenses) for each category+month.
     """
+    if df.empty:
+        return []
     results = []
     for name, meta in sorted(categories.items()):
         budget = meta["budget"]
