@@ -38,6 +38,11 @@ class FinanceCommandProvider(Provider):
             help="Create, edit, rename, or delete categories and budgets",
         )
         yield DiscoveryHit(
+            "Categorize",
+            lambda: app.action_categorize_filtered(),
+            help="Auto-categorize filtered transactions with LLM",
+        )
+        yield DiscoveryHit(
             "Clear Filters",
             lambda: app.action_clear_filters(),
             help="Remove all active filters",

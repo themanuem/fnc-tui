@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from rich.text import Text
-from textual import on
+from textual import on, work
 from textual.app import App
 from textual.binding import Binding
 from textual.containers import Horizontal
@@ -467,11 +467,90 @@ class FinanceTUI(App):
     def action_import_wizard(self):
         """Open the import wizard modal."""
         accounts = list(self.store.accounts.keys())
-        self.push_screen(ImportWizard(accounts))
+        categories = list(self.store.categories.keys())
+        self.push_screen(ImportWizard(accounts, categories))
 
     def action_manage_categories(self):
         """Open the category management dialog."""
         self.push_screen(CategoryListDialog(dict(self.store.categories)))
+
+    def action_categorize_filtered(self):
+        """Auto-categorize the current filtered transactions via LLM."""
+        if not self.store:
+            return
+        self._run_categorize()
+
+    @work(thread=True, exclusive=True)
+    def _run_categorize(self):
+        from finance_tui.ai.categorizer import categorize_transactions
+        from finance_tui.importers.llm import detect_provider
+
+        provider = detect_provider()
+        if not provider:
+            self.call_from_thread(
+                self.notify, "No LLM available — install Ollama or set ANTHROPIC_API_KEY", timeout=3
+            )
+            return
+
+        df = self.call_from_thread(self._get_filtered_df)
+        if df.empty:
+            self.call_from_thread(self.notify, "No transactions to categorize", timeout=2)
+            return
+
+        categories = list(self.store.categories.keys())
+        descriptions = df["description"].tolist()
+        rows = list(df.iterrows())
+        count = 0
+
+        def _update_status(msg):
+            try:
+                pane = self.query_one("TransactionsPane", TransactionsPane)
+                pane.query_one("#txn-status", Static).update(msg)
+            except Exception:
+                pass
+
+        def _on_batch(done, total, batch_results, error):
+            nonlocal count
+            for idx, result in batch_results:
+                if not result or result.get("confidence", 0) < 0.3:
+                    continue
+                _, row = rows[idx]
+                new_cat = result["category"]
+                if new_cat == row["category"]:
+                    continue
+                new_line = change_category(row["raw_line"], new_cat)
+                if self._watcher:
+                    file_path = self.store.transactions_dir / row["source_file"]
+                    self._watcher.ignore_next_change(str(file_path))
+                update_transaction_in_file(
+                    row["source_file"], row["line_number"], new_line
+                )
+                count += 1
+
+            status = f"[#E8871E]Categorizing...[/] {done}/{total} — {count} updated"
+            if error:
+                status += f" [red](error: {error[:40]})[/]"
+
+            def _refresh():
+                _update_status(status)
+                self.store.load()
+                self._refresh_all()
+
+            self.call_from_thread(_refresh)
+
+        self.call_from_thread(
+            _update_status, f"[#E8871E]Categorizing...[/] 0/{len(descriptions)}"
+        )
+
+        categorize_transactions(
+            descriptions, categories, provider=provider, on_batch=_on_batch,
+        )
+
+        def _finish():
+            _update_status("")
+            self.notify(f"Categorized {count} transaction{'s' if count != 1 else ''}", timeout=3)
+
+        self.call_from_thread(_finish)
 
     # --- Inline editing ---
     @on(TransactionTable.TransactionEdited)

@@ -48,16 +48,16 @@ A terminal dashboard for personal finance tracking, built with [Textual](https:/
 
 ### AI Integration (Optional)
 
-Requires `ANTHROPIC_API_KEY` environment variable. Gracefully disabled when not set.
+Requires either a local [Ollama](https://ollama.com/) instance or an `ANTHROPIC_API_KEY`. Gracefully disabled when neither is available.
 
-- **Anomaly detection** — Outlier and duplicate alerts surfaced in the alerts panel (statistical, no API needed for core detection)
-- **Auto-categorization** — Batch classification of transaction descriptions via Claude Haiku
+- **Anomaly detection** — Outlier and duplicate alerts surfaced in the alerts panel (statistical, no API needed)
+- **Auto-categorization** — Batch classification of transaction descriptions via Ollama (local) or Claude Haiku (cloud). Available in the import wizard and as a command palette action on filtered transactions with live progress feedback
 - **Natural language queries** — Chat interface with 6 tool-use functions (spending totals, top expenses, category breakdowns, period comparisons, search, budget status)
 - **Response caching** — SQLite-backed cache at `~/.finance-tui/cache.db`
 
 ### Live Reload
 
-File watcher with 500ms debounce monitors the Obsidian vault. Edits made in Obsidian (or any external editor) appear automatically. Self-writes are tracked to prevent reload loops.
+File watcher with 500ms debounce monitors the finance directory. Edits made in any external editor appear automatically. Self-writes are tracked to prevent reload loops.
 
 ## Data Format
 
@@ -224,12 +224,12 @@ src/finance_tui/
 ├── commands.py          # Command palette provider
 ├── ai/
 │   ├── cache.py         # SQLite response cache
-│   ├── categorizer.py   # Claude Haiku auto-categorization
+│   ├── categorizer.py   # LLM auto-categorization (Ollama / Anthropic)
 │   ├── insights.py      # Outlier & duplicate detection
 │   └── nlq.py           # Natural language queries with tool use
 ├── importers/
 │   ├── readers.py       # Multi-format file readers (.csv/.json/.xlsx/.md)
-│   ├── mapper.py        # LLM-powered column autodetection
+│   ├── mapper.py        # Heuristic column autodetection
 │   ├── llm.py           # Unified LLM abstraction (Ollama + Anthropic)
 │   └── transformer.py   # DataFrame → Transaction conversion
 ├── screens/
@@ -314,10 +314,10 @@ uv run textual run --dev src/finance_tui/app.py
 | Charts | [textual-plotext](https://github.com/Textualize/textual-plotext) |
 | Markdown parsing | Custom regex + PyYAML |
 | File watching | watchdog |
-| AI features | Anthropic SDK (Claude Haiku) |
+| AI features | Ollama (local) / Anthropic SDK (cloud) |
 | Build system | hatchling |
 | Package manager | uv |
 
 ## License
 
-Private project — not licensed for redistribution.
+MIT

@@ -1,100 +1,107 @@
-"""AI auto-categorization using Claude Haiku."""
+"""AI auto-categorization using LLM (Ollama or Anthropic)."""
 
 import hashlib
 import json
-import os
+import logging
 
 from finance_tui.ai.cache import cache_get, cache_set
+from finance_tui.importers.llm import Provider, llm_complete
 
-CATEGORIES_PROMPT_TEMPLATE = """You are a financial transaction categorizer. Given transaction descriptions, suggest the most likely category.
+log = logging.getLogger(__name__)
+
+_PROMPT_TEMPLATE = """You are a financial transaction categorizer.
 
 Available categories:
 {categories}
 
-For each transaction, respond with a JSON array of objects:
+For each transaction below, pick the single best category from the list above.
+Respond with a JSON array — one object per transaction, in the same order:
 [{{"description": "...", "category": "...", "confidence": 0.0-1.0}}]
 
-Only use categories from the list above. Be concise."""
+JSON only, no explanation.
+
+Transactions:
+{transactions}"""
+
+_BATCH_SIZE = 10
 
 
-def _build_prompt(categories: list[str]) -> str:
-    cat_list = "\n".join(f"- {c}" for c in categories)
-    return CATEGORIES_PROMPT_TEMPLATE.format(categories=cat_list)
-
-
-async def categorize_transactions(
+def categorize_transactions(
     descriptions: list[str],
     categories: list[str],
+    provider: Provider = Provider.OLLAMA,
+    on_batch: callable = None,
 ) -> list[dict]:
-    """Categorize transactions using Claude Haiku.
+    """Categorize transactions using an LLM.
+
+    Args:
+        on_batch: Optional callback(done, total, batch_results, error) called after each batch.
 
     Returns list of {description, category, confidence} dicts.
-    Falls back gracefully if API key is not set.
     """
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        return [
-            {"description": d, "category": "Other", "confidence": 0.0}
-            for d in descriptions
-        ]
-
-    # Check cache first
-    results = []
-    uncached = []
-    uncached_indices = []
+    results: list[dict | None] = [None] * len(descriptions)
+    uncached: list[tuple[int, str]] = []
 
     for i, desc in enumerate(descriptions):
         cache_key = f"cat:{hashlib.md5(desc.encode()).hexdigest()}"
         cached = cache_get(cache_key)
         if cached:
-            results.append(cached)
+            results[i] = cached
         else:
-            results.append(None)
-            uncached.append(desc)
-            uncached_indices.append(i)
+            uncached.append((i, desc))
+
+    total = len(descriptions)
+    cached_count = total - len(uncached)
+
+    if cached_count and on_batch:
+        on_batch(cached_count, total, [(i, r) for i, r in enumerate(results) if r is not None], None)
 
     if not uncached:
-        return results
+        return [r for r in results if r is not None]
 
-    # Batch API call
-    try:
-        from anthropic import AsyncAnthropic
+    cat_list = "\n".join(f"- {c}" for c in categories)
+    done = cached_count
 
-        client = AsyncAnthropic()
-        batch_text = "\n".join(f"- {d}" for d in uncached)
+    for batch_start in range(0, len(uncached), _BATCH_SIZE):
+        batch = uncached[batch_start : batch_start + _BATCH_SIZE]
+        batch_text = "\n".join(f"- {desc}" for _, desc in batch)
+        prompt = _PROMPT_TEMPLATE.format(categories=cat_list, transactions=batch_text)
 
-        prompt = _build_prompt(categories)
-        response = await client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=1024,
-            messages=[{
-                "role": "user",
-                "content": f"{prompt}\n\nTransactions:\n{batch_text}",
-            }],
-        )
+        batch_results = []
+        error = None
+        try:
+            response = llm_complete(prompt, provider=provider)
+            parsed = _extract_json_array(response)
 
-        # Parse response
-        text = response.content[0].text
-        # Find JSON array in response
-        start = text.find("[")
-        end = text.rfind("]") + 1
-        if start >= 0 and end > start:
-            parsed = json.loads(text[start:end])
-            for idx, item in zip(uncached_indices, parsed):
+            for (idx, desc), item in zip(batch, parsed):
                 result = {
-                    "description": descriptions[idx],
+                    "description": desc,
                     "category": item.get("category", "Other"),
                     "confidence": float(item.get("confidence", 0.5)),
                 }
                 results[idx] = result
-                # Cache it
-                cache_key = f"cat:{hashlib.md5(descriptions[idx].encode()).hexdigest()}"
+                batch_results.append((idx, result))
+                cache_key = f"cat:{hashlib.md5(desc.encode()).hexdigest()}"
                 cache_set(cache_key, result)
+        except Exception as e:
+            error = str(e)
+            log.warning("Categorization batch failed: %s", e)
 
-    except Exception:
-        pass
+        done += len(batch)
+        if on_batch:
+            on_batch(done, total, batch_results, error)
 
-    # Fill any remaining None entries
     return [
         r if r else {"description": descriptions[i], "category": "Other", "confidence": 0.0}
         for i, r in enumerate(results)
     ]
+
+
+def _extract_json_array(text: str) -> list[dict]:
+    import re
+    text = re.sub(r"```\w*\n?", "", text)
+    start = text.find("[")
+    end = text.rfind("]") + 1
+    if start < 0 or end <= start:
+        return []
+    return json.loads(text[start:end])

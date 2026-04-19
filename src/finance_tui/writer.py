@@ -109,11 +109,13 @@ def prepend_transaction(
 def bulk_prepend_transactions(
     lines: list[tuple[int, str]],
     transactions_dir: Path | None = None,
+    last_id: int | None = None,
 ) -> dict[int, Path]:
     """Prepend multiple transaction lines grouped by year.
 
     Args:
         lines: List of (year, serialized_line) tuples.
+        last_id: If provided, update the ``last:`` frontmatter field in each written file.
 
     Returns:
         Dict mapping year to the file path written.
@@ -128,18 +130,33 @@ def bulk_prepend_transactions(
         file_path = transactions_dir / f"{year}.md"
         block = "\n".join(batch) + "\n"
         if not file_path.exists():
-            file_path.write_text(f"---\n---\n{block}", encoding="utf-8")
+            fm = "---\ntags:\n  - finance/transactions\n"
+            if last_id is not None:
+                fm += f"last: {last_id}\n"
+            fm += "---\n"
+            file_path.write_text(fm + block, encoding="utf-8")
         else:
             text = file_path.read_text(encoding="utf-8")
             if text.startswith("---"):
                 second = text.index("---", 3)
                 end_fm = text.index("\n", second) + 1
-                text = text[:end_fm] + block + text[end_fm:]
+                fm_text = text[:end_fm]
+                if last_id is not None:
+                    fm_text = _update_frontmatter_last(fm_text, last_id)
+                text = fm_text + block + "---\n" + text[end_fm:]
             else:
-                text = block + text
+                text = block + "---\n" + text
             file_path.write_text(text, encoding="utf-8")
         written[year] = file_path
     return written
+
+
+def _update_frontmatter_last(fm_text: str, last_id: int) -> str:
+    """Update or insert the ``last:`` field in YAML frontmatter."""
+    if re.search(r"^last:\s*\d+", fm_text, re.MULTILINE):
+        return re.sub(r"^last:\s*\d+", f"last: {last_id}", fm_text, count=1, flags=re.MULTILINE)
+    end = fm_text.rfind("---")
+    return fm_text[:end] + f"last: {last_id}\n" + fm_text[end:]
 
 
 def write_category_file(

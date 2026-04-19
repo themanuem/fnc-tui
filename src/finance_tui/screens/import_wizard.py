@@ -9,12 +9,16 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Input, Label, Select, Static
 
 
+_AUTO_CAT = "__auto__"
+
+
 class ImportWizard(ModalScreen[bool]):
     """Three-step import wizard: file → mapping → preview + confirm."""
 
-    def __init__(self, accounts: list[str], **kwargs):
+    def __init__(self, accounts: list[str], categories: list[str] | None = None, **kwargs):
         super().__init__(**kwargs)
         self._accounts = accounts
+        self._categories = categories or []
         self._step = 1
         self._df = None
         self._mapping = None
@@ -22,6 +26,11 @@ class ImportWizard(ModalScreen[bool]):
         self._duplicates = []
 
     def compose(self) -> ComposeResult:
+        cat_options = [
+            ("Auto-categorize (LLM)", _AUTO_CAT),
+            *((c, c) for c in sorted(self._categories)),
+        ]
+
         with Vertical(id="wizard-container"):
             yield Label("Import Transactions", id="wizard-title")
             yield Static("", id="wizard-error")
@@ -36,6 +45,12 @@ class ImportWizard(ModalScreen[bool]):
                     [(a, a) for a in sorted(self._accounts)],
                     id="wizard-account",
                     prompt="Select account",
+                )
+                yield Label("Category:")
+                yield Select(
+                    cat_options,
+                    id="wizard-category",
+                    prompt="Select category",
                 )
                 yield Label("LLM Provider:")
                 yield Select(
@@ -118,6 +133,7 @@ class ImportWizard(ModalScreen[bool]):
     def _process_step1(self):
         file_input = self.query_one("#wizard-file", Input)
         account_select = self.query_one("#wizard-account", Select)
+        category_select = self.query_one("#wizard-category", Select)
         provider_select = self.query_one("#wizard-provider", Select)
 
         file_path = Path(file_input.value.strip())
@@ -127,9 +143,13 @@ class ImportWizard(ModalScreen[bool]):
         if account_select.value == Select.BLANK:
             self._show_error("Please select an account")
             return
+        if category_select.value == Select.BLANK:
+            self._show_error("Please select a category")
+            return
 
         self._file_path = file_path
         self._account = str(account_select.value)
+        self._category_choice = str(category_select.value)
         self._provider_choice = str(provider_select.value)
         self._read_and_map_file()
 
@@ -137,7 +157,6 @@ class ImportWizard(ModalScreen[bool]):
     def _read_and_map_file(self):
         from finance_tui.importers.readers import read_file
         from finance_tui.importers.mapper import detect_columns
-        from finance_tui.importers.llm import Provider, detect_provider
 
         try:
             self._df = read_file(self._file_path)
@@ -148,20 +167,11 @@ class ImportWizard(ModalScreen[bool]):
         columns = list(self._df.columns)
         col_options = [(c, c) for c in columns]
 
-        # Try LLM mapping
         detected = None
-        if self._provider_choice == "auto":
-            provider = detect_provider()
-        elif self._provider_choice == "ollama":
-            provider = Provider.OLLAMA
-        else:
-            provider = Provider.ANTHROPIC
-
-        if provider:
-            try:
-                detected = detect_columns(self._df, provider=provider)
-            except Exception:
-                pass
+        try:
+            detected = detect_columns(self._df)
+        except Exception:
+            pass
 
         def update_ui():
             for sel_id in ("#wizard-date-col", "#wizard-desc-col", "#wizard-amount-col"):
@@ -173,9 +183,6 @@ class ImportWizard(ModalScreen[bool]):
                 self.query_one("#wizard-desc-col", Select).value = detected.description_col
                 if detected.amount_col:
                     self.query_one("#wizard-amount-col", Select).value = detected.amount_col
-                title = self.query_one("#wizard-map-title", Label)
-                provider_name = provider.value if provider else "auto"
-                title.update(f"Column Mapping [dim](detected by {provider_name})[/]")
 
             self._show_step(2)
 
@@ -204,16 +211,21 @@ class ImportWizard(ModalScreen[bool]):
         from finance_tui.config import TRANSACTIONS_DIR
         from finance_tui.importers.transformer import detect_duplicates, transform
         from finance_tui.store import FinanceStore
-        from finance_tui.writer import serialize_transaction
+
+        category = "Other" if self._category_choice == _AUTO_CAT else self._category_choice
 
         try:
             self._transactions = transform(
                 self._df, self._mapping, self._account,
+                category=category,
                 transactions_dir=TRANSACTIONS_DIR,
             )
         except Exception as e:
             self.app.call_from_thread(self._show_error, f"Transform error: {e}")
             return
+
+        if self._category_choice == _AUTO_CAT:
+            self._run_llm_categorization()
 
         try:
             store = FinanceStore()
@@ -232,9 +244,9 @@ class ImportWizard(ModalScreen[bool]):
 
             table = self.query_one("#wizard-preview-table", DataTable)
             table.clear(columns=True)
-            table.add_columns("Date", "Description", "Amount")
+            table.add_columns("Date", "Description", "Amount", "Category")
             for t in txns[:10]:
-                table.add_row(t.date.isoformat(), t.description, f"{t.amount:.2f}")
+                table.add_row(t.date.isoformat(), t.description, f"{t.amount:.2f}", t.category)
 
             total = sum(t.amount for t in txns)
             self.query_one("#wizard-preview-stats", Static).update(
@@ -253,6 +265,31 @@ class ImportWizard(ModalScreen[bool]):
 
         self.app.call_from_thread(update_ui)
 
+    def _run_llm_categorization(self):
+        from finance_tui.ai.categorizer import categorize_transactions
+        from finance_tui.importers.llm import Provider, detect_provider
+
+        if self._provider_choice == "auto":
+            provider = detect_provider()
+        elif self._provider_choice == "ollama":
+            provider = Provider.OLLAMA
+        else:
+            provider = Provider.ANTHROPIC
+
+        if not provider:
+            return
+
+        categories = self._categories or ["Other"]
+        descriptions = [t.description for t in self._transactions]
+
+        try:
+            results = categorize_transactions(descriptions, categories, provider=provider)
+            for txn, result in zip(self._transactions, results):
+                if result and result.get("confidence", 0) > 0.3:
+                    txn.category = result["category"]
+        except Exception:
+            pass
+
     def _process_step3(self):
         self._write_transactions()
 
@@ -270,7 +307,8 @@ class ImportWizard(ModalScreen[bool]):
             lines.append((t.date.year, serialized))
 
         try:
-            written = bulk_prepend_transactions(lines, TRANSACTIONS_DIR)
+            max_id = max(t.id for t in self._transactions)
+            written = bulk_prepend_transactions(lines, TRANSACTIONS_DIR, last_id=max_id)
             count = len(self._transactions)
             files = ", ".join(p.name for p in written.values())
 

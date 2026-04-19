@@ -11,7 +11,6 @@ class Provider(str, Enum):
 
 
 DEFAULT_MODELS = {
-    Provider.OLLAMA: "llama3.2",
     Provider.ANTHROPIC: "claude-haiku-4-5-20251001",
 }
 
@@ -26,7 +25,7 @@ def llm_complete(
 
     Tries the requested provider first. Raises RuntimeError if unavailable.
     """
-    model = model or DEFAULT_MODELS[provider]
+    model = model or DEFAULT_MODELS.get(provider) or _default_ollama_model()
     if provider == Provider.OLLAMA:
         return _ollama_complete(prompt, system, model)
     return _anthropic_complete(prompt, system, model)
@@ -41,6 +40,18 @@ def detect_provider() -> Provider | None:
     return None
 
 
+def _default_ollama_model() -> str:
+    try:
+        import httpx
+        r = httpx.get(f"{_ollama_host()}/api/tags", timeout=3)
+        models = r.json().get("models", [])
+        if models:
+            return models[0]["name"]
+    except Exception:
+        pass
+    return "llama3.2"
+
+
 def _ollama_available() -> bool:
     try:
         import httpx
@@ -48,7 +59,10 @@ def _ollama_available() -> bool:
             f"{_ollama_host()}/api/tags",
             timeout=3,
         )
-        return r.status_code == 200
+        if r.status_code != 200:
+            return False
+        models = r.json().get("models", [])
+        return len(models) > 0
     except Exception:
         return False
 
@@ -68,7 +82,7 @@ def _ollama_complete(prompt: str, system: str, model: str) -> str:
     r = httpx.post(
         f"{_ollama_host()}/api/chat",
         json={"model": model, "messages": messages, "stream": False},
-        timeout=30,
+        timeout=120,
     )
     r.raise_for_status()
     return r.json()["message"]["content"]

@@ -27,7 +27,10 @@ def transform(
     start_id = _next_id(transactions_dir)
     transactions = []
     for i, (_, row) in enumerate(df.iterrows()):
-        txn_date = _parse_date(row[mapping.date_col])
+        raw_date = row[mapping.date_col]
+        if pd.isna(raw_date) or str(raw_date).strip() == "":
+            continue
+        txn_date = _parse_date(raw_date)
         amount = _normalize_amount(row, mapping)
         description = str(row[mapping.description_col]).strip()
         transactions.append(Transaction(
@@ -53,7 +56,12 @@ def _parse_date(value) -> date:
         return date.fromisoformat(s)
     except (ValueError, TypeError):
         pass
-    return dateparser.parse(s, dayfirst=True).date()
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(s).date()
+    except (ValueError, TypeError):
+        pass
+    return dateparser.parse(s, dayfirst=False).date()
 
 
 def _normalize_amount(row: pd.Series, mapping: ColumnMapping) -> float:
@@ -68,9 +76,13 @@ def _to_float(value) -> float:
     if isinstance(value, (int, float)):
         return float(value)
     s = str(value).strip()
-    # European format: 1.234,56 → dots are thousands, comma is decimal
-    if "," in s and "." in s and s.rfind(",") > s.rfind("."):
-        s = s.replace(".", "").replace(",", ".")
+    if "," in s and "." in s:
+        if s.rfind(",") > s.rfind("."):
+            # European: 1.234,56 → dots are thousands, comma is decimal
+            s = s.replace(".", "").replace(",", ".")
+        else:
+            # US: 1,002.80 → commas are thousands, dot is decimal
+            s = s.replace(",", "")
     elif "," in s:
         s = s.replace(",", ".")
     s = re.sub(r"[^\d.\-+]", "", s)

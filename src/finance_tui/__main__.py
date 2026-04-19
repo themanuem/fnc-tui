@@ -16,14 +16,11 @@ def main():
     imp.add_argument("file", type=Path, help="Path to .csv, .json, .xlsx, or .md file")
     imp.add_argument("--account", required=True, help="Account ID (e.g. BBVA_01)")
     imp.add_argument("--category", default="Other", help="Default category (default: Other)")
-    imp.add_argument("--provider", choices=["ollama", "anthropic"], default=None,
-                     help="LLM provider for column detection (default: auto-detect)")
-    imp.add_argument("--model", default=None, help="LLM model name")
-    imp.add_argument("--date-col", default=None, help="Override date column (skip LLM)")
-    imp.add_argument("--desc-col", default=None, help="Override description column (skip LLM)")
-    imp.add_argument("--amount-col", default=None, help="Override amount column (skip LLM)")
-    imp.add_argument("--debit-col", default=None, help="Override debit column (skip LLM)")
-    imp.add_argument("--credit-col", default=None, help="Override credit column (skip LLM)")
+    imp.add_argument("--date-col", default=None, help="Override date column")
+    imp.add_argument("--desc-col", default=None, help="Override description column")
+    imp.add_argument("--amount-col", default=None, help="Override amount column")
+    imp.add_argument("--debit-col", default=None, help="Override debit column")
+    imp.add_argument("--credit-col", default=None, help="Override credit column")
     imp.add_argument("--no-preview", action="store_true", help="Skip preview, write immediately")
     imp.add_argument("--dry-run", action="store_true", help="Preview only, don't write")
 
@@ -47,7 +44,6 @@ def _run_import(args):
 
     from finance_tui.config import TRANSACTIONS_DIR
     from finance_tui.importers.mapper import ColumnMapping, detect_columns
-    from finance_tui.importers.llm import Provider, detect_provider
     from finance_tui.importers.readers import read_file
     from finance_tui.importers.transformer import detect_duplicates, transform
     from finance_tui.store import FinanceStore
@@ -80,19 +76,12 @@ def _run_import(args):
         mapping.validate()
         console.print("[dim]Using manual column mapping[/]")
     else:
-        provider_arg = Provider(args.provider) if args.provider else None
-        provider = provider_arg or detect_provider()
-        if provider is None:
-            console.print(
-                "[red]No LLM available.[/] Install Ollama or set ANTHROPIC_API_KEY.\n"
-                "Or specify columns manually: --date-col, --desc-col, --amount-col"
-            )
-            sys.exit(1)
-        console.print(f"Detecting columns via [bold]{provider.value}[/]...")
+        console.print("Detecting columns...")
         try:
-            mapping = detect_columns(df, provider=provider, model=args.model)
+            mapping = detect_columns(df)
         except Exception as e:
             console.print(f"[red]Column detection failed:[/] {e}")
+            console.print("[dim]Specify columns manually: --date-col, --desc-col, --amount-col[/]")
             sys.exit(1)
 
     # Show mapping
@@ -166,7 +155,8 @@ def _run_import(args):
         )
         lines.append((t.date.year, serialized))
 
-    written = bulk_prepend_transactions(lines, TRANSACTIONS_DIR)
+    max_id = max(t.id for t in txns)
+    written = bulk_prepend_transactions(lines, TRANSACTIONS_DIR, last_id=max_id)
     files = ", ".join(str(p.name) for p in written.values())
     console.print(f"\n[green]Done![/] {len(txns)} transactions written to {files}")
 

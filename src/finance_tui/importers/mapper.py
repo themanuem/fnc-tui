@@ -1,34 +1,9 @@
-"""Autodetect column mapping using an LLM."""
+"""Autodetect column mapping using heuristics."""
 
-import hashlib
-import json
+import re
 from dataclasses import dataclass
 
 import pandas as pd
-
-from finance_tui.ai.cache import cache_get, cache_set
-from finance_tui.importers.llm import Provider, llm_complete
-
-SYSTEM_PROMPT = """You are a data-mapping assistant. You identify columns in financial data.
-Respond with JSON only — no explanation, no markdown fences."""
-
-USER_PROMPT = """\
-Given these spreadsheet columns and sample data, identify which columns contain:
-1. Transaction date
-2. Transaction description or name
-3. Transaction amount
-
-If the amount is split into separate debit and credit columns, identify both instead of a single amount column.
-
-Columns: {columns}
-
-Sample rows:
-{samples}
-
-Respond with JSON only. Use one of these two formats:
-{{"date": "column_name", "description": "column_name", "amount": "column_name"}}
-or if split into debit/credit:
-{{"date": "column_name", "description": "column_name", "debit": "column_name", "credit": "column_name"}}"""
 
 
 @dataclass
@@ -52,47 +27,71 @@ class ColumnMapping:
         return self.debit_col is not None and self.credit_col is not None
 
 
-def detect_columns(
-    df: pd.DataFrame,
-    provider: Provider = Provider.OLLAMA,
-    model: str | None = None,
-) -> ColumnMapping:
-    """Use an LLM to detect which columns map to date, description, and amount."""
+# Patterns ordered by priority — first match wins.
+# Completion/settlement dates are listed before start dates so they win.
+_DATE_PATTERNS = [
+    r"complet\w*\s*date", r"settle\w*\s*date", r"post\w*\s*date",
+    r"value\s*date", r"booking\s*date", r"transaction\s*date",
+    r"\bdate\b", r"\bfecha\b", r"\bdatum\b",
+]
+_DESC_PATTERNS = [
+    r"\bdescription\b", r"\bnarration\b", r"\bmemo\b",
+    r"\bpayee\b", r"\bname\b", r"\bdetails?\b", r"\breference\b",
+    r"\bconcept[eo]?\b",
+]
+_AMOUNT_PATTERNS = [
+    r"\bamount\b", r"\bsum\b", r"\btotal\b", r"\bvalue\b",
+    r"\bimporte?\b", r"\bbetrag\b",
+]
+_DEBIT_PATTERNS = [
+    r"\bdebit\b", r"\bwithdrawal\b", r"\bcharge\b", r"\bout\b",
+]
+_CREDIT_PATTERNS = [
+    r"\bcredit\b", r"\bdeposit\b", r"\bin\b(?!dex|put|voice)",
+]
+
+
+def _match_column(columns: list[str], patterns: list[str]) -> str | None:
+    lower = {c: c.lower().strip() for c in columns}
+    for pattern in patterns:
+        for col, low in lower.items():
+            if re.search(pattern, low):
+                return col
+    return None
+
+
+def detect_columns(df: pd.DataFrame) -> ColumnMapping:
+    """Detect column mapping using name-based heuristics."""
     columns = list(df.columns)
-    cache_key = "map:" + hashlib.md5(
-        ",".join(sorted(columns)).encode()
-    ).hexdigest()
-    cached = cache_get(cache_key)
-    if cached:
-        mapping = _parse_mapping(cached)
-        mapping.validate()
-        return mapping
 
-    samples = df.head(5).to_string(index=False)
-    prompt = USER_PROMPT.format(columns=columns, samples=samples)
+    date_col = _match_column(columns, _DATE_PATTERNS)
+    desc_col = _match_column(columns, _DESC_PATTERNS)
+    amount_col = _match_column(columns, _AMOUNT_PATTERNS)
+    debit_col = _match_column(columns, _DEBIT_PATTERNS)
+    credit_col = _match_column(columns, _CREDIT_PATTERNS)
 
-    response = llm_complete(prompt, system=SYSTEM_PROMPT, provider=provider, model=model)
-    parsed = _extract_json(response)
-    mapping = _parse_mapping(parsed)
-    mapping.validate()
+    if not date_col:
+        for col in columns:
+            try:
+                pd.to_datetime(df[col].head(5))
+                date_col = col
+                break
+            except Exception:
+                continue
 
-    cache_set(cache_key, parsed)
-    return mapping
+    if not date_col:
+        raise ValueError(f"Could not detect a date column in: {columns}")
+    if not desc_col:
+        raise ValueError(f"Could not detect a description column in: {columns}")
 
+    has_split = debit_col and credit_col
+    if not amount_col and not has_split:
+        raise ValueError(f"Could not detect an amount column in: {columns}")
 
-def _extract_json(text: str) -> dict:
-    start = text.find("{")
-    end = text.rfind("}") + 1
-    if start < 0 or end <= start:
-        raise ValueError(f"No JSON object found in LLM response: {text[:200]}")
-    return json.loads(text[start:end])
-
-
-def _parse_mapping(data: dict) -> ColumnMapping:
     return ColumnMapping(
-        date_col=data["date"],
-        description_col=data["description"],
-        amount_col=data.get("amount"),
-        debit_col=data.get("debit"),
-        credit_col=data.get("credit"),
+        date_col=date_col,
+        description_col=desc_col,
+        amount_col=amount_col if not has_split else None,
+        debit_col=debit_col if has_split else None,
+        credit_col=credit_col if has_split else None,
     )
